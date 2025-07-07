@@ -24,7 +24,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 function App() {
   return (
     <AuthProvider>
-      <Router basename="/restaurant-frontend">
+      <Router>
         <Routes>
           {/* =================================================================
            * PUBLIC ROUTES
