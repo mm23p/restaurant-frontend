@@ -72,29 +72,44 @@ const MenuManagement = () => {
 
 
 const handleConfirmDelete = async () => {
-    if (!itemToDelete) return;
-    setIsDeleting(true);
-    try {
-      await axios.delete(`/menu/${itemToDelete.id}`);
-      
-      // Use the robust check here too
-      if (user && user.role && user.role.toLowerCase() === 'admin') {
-        setSuccessMessage('Item deleted successfully!');
-      } else {
-        setSuccessMessage('Deletion request has been submitted for approval.');
-      }
+  if (!itemToDelete) return;
 
-      setIsDeleteModalOpen(false);
-      setTimeout(() => setSuccessMessage(null), 5000);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to delete/request deletion:", err);
-      alert(err.response?.data?.error || 'An error occurred.');
-    } finally {
-      setIsDeleting(false);
-      setItemToDelete(null);
+  setIsDeleting(true);
+  try {
+    // For a manager, we need to send some data (notes).
+    // For an admin, we don't.
+    const isManagerRequest = user && user.role && user.role.toLowerCase() === 'manager';
+    
+    // axios.delete can send a body, but it must be wrapped in a `data` object within the config.
+    const axiosConfig = isManagerRequest 
+      ? { data: { requesterNotes: `Manager requesting deletion of item: ${itemToDelete.name}` } }
+      : {};
+
+    // The frontend always sends a DELETE request.
+    // The backend knows how to handle it based on the user's role and the data sent.
+    await axios.delete(`/menu/${itemToDelete.id}`, axiosConfig);
+    
+    // We show a different success message based on the role.
+    if (user && user.role && user.role.toLowerCase() === 'admin') {
+      setSuccessMessage('Item deleted successfully!');
+    } else {
+      setSuccessMessage('Deletion request has been submitted for approval.');
     }
-  };
+
+    setIsDeleteModalOpen(false);
+    setTimeout(() => setSuccessMessage(null), 5000);
+    fetchData(); // Refresh the data list
+  } catch (err) {
+    // This will now show a more useful error message from the backend if something fails.
+    console.error("Failed to delete/request deletion:", err);
+    alert(err.response?.data?.error || 'An error occurred during the request.');
+  } finally {
+    setIsDeleting(false);
+    setItemToDelete(null);
+  }
+};
+
+
    const handleFormSubmit = async (formData) => {
     setFormError(null);
 
