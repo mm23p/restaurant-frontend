@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import AppLayout from '../components/AppLayout';
-import AdminSidebar from '../components/AdminSidebar';
 import axios from '../api/axios';
 import { FaPlus, FaToggleOn, FaToggleOff, FaTimes } from 'react-icons/fa';
 import MenuItemForm from '../components/MenuItemForm'; // <-- Import our new reusable form
@@ -44,7 +43,6 @@ const MenuManagement = () => {
     fetchData();
   }, []);
 
-  // Filtering logic
   const filteredItems = useMemo(() => {
     return menuItems
       .filter(item => selectedCategory === 'All' || item.category === selectedCategory)
@@ -54,15 +52,14 @@ const MenuManagement = () => {
 
   const uniqueCategories = useMemo(() => ['All', ...categories], [categories]);
 
-  // --- Handlers for opening the form ---
   const handleAddItem = () => {
-    setEditingItem(null); // Ensure we are in "add" mode
+    setEditingItem(null); 
     setFormError(null); 
     setIsFormOpen(true);
   };
 
   const handleEditItem = (item) => {
-    setEditingItem(item); // Set the item to edit
+    setEditingItem(item);
     setFormError(null);
     setIsFormOpen(true);
   };
@@ -79,20 +76,25 @@ const MenuManagement = () => {
 
     setIsDeleting(true);
     try {
+     
       await axios.delete(`/menu/${itemToDelete.id}`);
+      if (user.role === 'admin') {
+        setSuccessMessage('Item deleted successfully!');
+      } else {
+        setSuccessMessage('Deletion request has been submitted for approval.');
+      }
+
       setIsDeleteModalOpen(false);
-      setSuccessMessage('Item deleted successfully!'); // Set success message
-      setTimeout(() => setSuccessMessage(null), 5000); // Clear after 5 seconds
-      fetchData();
+      setTimeout(() => setSuccessMessage(null), 5000);
+      fetchData(); 
     } catch (err) {
-      console.error("Failed to delete item:", err);
-      alert(err.response?.data?.error || 'Failed to delete item.');
+      console.error("Failed to delete/request deletion:", err);
+      alert(err.response?.data?.error || 'An error occurred.');
     } finally {
       setIsDeleting(false);
       setItemToDelete(null);
     }
   };
-
    
    const handleFormSubmit = async (formData) => {
     setFormError(null);
@@ -131,6 +133,20 @@ const MenuManagement = () => {
 
    if (loading) return <AppLayout sidebar={<AppSidebar />}><div className="p-8">Loading...</div></AppLayout>;
   if (error) return <AppLayout sidebar={<AppSidebar />}><div className="p-8 text-red-500">Error: {error}</div></AppLayout>;
+
+  const isManager = user.role === 'manager';
+  const modalTitle = isManager ? "Request Item Deletion" : "Delete Menu Item";
+  const modalConfirmText = isManager ? "Yes, Send Request" : "Yes, Delete";
+  const modalBody = isManager ? (
+    <p>Are you sure you want to request the permanent deletion of <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>? This will be sent to an admin for approval.</p>
+  ) : (
+    <>
+      <p>Are you sure you want to permanently delete the item <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>?</p>
+      <p className="mt-2 text-sm text-red-600">This action cannot be undone.</p>
+    </>
+  );
+
+
    return (
     <AppLayout sidebar={<AppSidebar />}>
       {isFormOpen && (
@@ -150,20 +166,18 @@ const MenuManagement = () => {
         </div>
       )}
 
-      <ConfirmationModal
+            <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
-        title="Delete Menu Item"
-        confirmText="Yes, Delete"
+        title={modalTitle}
+        confirmText={modalConfirmText}
         isLoading={isDeleting}
+        confirmButtonClass={isManager ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}
       >
-        <p>
-          Are you sure you want to permanently delete the item
-          <strong className="font-bold text-gray-800"> "{itemToDelete?.name}"</strong>?
-        </p>
-        <p className="mt-2 text-sm text-red-600">This action cannot be undone.</p>
+        {modalBody}
       </ConfirmationModal>
+
 
       <main className="flex-1 p-6">
         {/* --- 5. RENDER THE SUCCESS MESSAGE --- */}
