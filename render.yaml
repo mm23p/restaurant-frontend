@@ -1,3 +1,22 @@
-staticRedirects:
-  - source: /*
-    destination: /index.html
+services:
+  # This is a static site, so we use the 'static' type
+  - type: static
+    name: restaurant-frontend # You can name this whatever you like
+    env: static
+    # The build script we created earlier
+    buildCommand: "npm run render-build"
+    # The directory where the final files are located
+    publishDir: build
+    headers:
+      # For all files, set a default cache policy
+      - path: "/*"
+        name: "Cache-Control"
+        value: "public, max-age=31536000, immutable"
+      # IMPORTANT: For index.html, OVERRIDE the policy to prevent caching
+      - path: "/index.html"
+        name: "Cache-Control"
+        value: "no-cache, no-store, must-revalidate"
+    rewrites:
+      # The rewrite rule for client-side routing
+      - source: "/*"
+        destination: "/index.html"
