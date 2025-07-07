@@ -8,7 +8,7 @@ import AppLayout from '../components/AppLayout';
 import AppSidebar from '../components/AppSidebar';
 
 const ReportsPage = () => {
-    const [activeReport, setActiveReport] = useState('waiter'); // 'waiter' or 'menu'
+    const [activeReport, setActiveReport] = useState('user'); // 'waiter' or 'menu'
     const [reportData, setReportData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
