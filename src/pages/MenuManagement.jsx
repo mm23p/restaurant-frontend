@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import AppLayout from '../components/AppLayout';
 import axios from '../api/axios';
 import { FaPlus, FaToggleOn, FaToggleOff, FaTimes } from 'react-icons/fa';
-import MenuItemForm from '../components/MenuItemForm'; // <-- Import our new reusable form
+import MenuItemForm from '../components/MenuItemForm'; 
 import ConfirmationModal from '../components/ConfirmationModal';
 import { useAuth } from '../context/AuthContext';
 import AppSidebar from '../components/AppSidebar';
@@ -71,14 +71,14 @@ const MenuManagement = () => {
   };
 
 
-  const handleConfirmDelete = async () => {
+const handleConfirmDelete = async () => {
     if (!itemToDelete) return;
-
     setIsDeleting(true);
     try {
-     
       await axios.delete(`/menu/${itemToDelete.id}`);
-      if (user.role === 'admin') {
+      
+      // Use the robust check here too
+      if (user && user.role && user.role.toLowerCase() === 'admin') {
         setSuccessMessage('Item deleted successfully!');
       } else {
         setSuccessMessage('Deletion request has been submitted for approval.');
@@ -86,7 +86,7 @@ const MenuManagement = () => {
 
       setIsDeleteModalOpen(false);
       setTimeout(() => setSuccessMessage(null), 5000);
-      fetchData(); 
+      fetchData();
     } catch (err) {
       console.error("Failed to delete/request deletion:", err);
       alert(err.response?.data?.error || 'An error occurred.');
@@ -95,7 +95,6 @@ const MenuManagement = () => {
       setItemToDelete(null);
     }
   };
-   
    const handleFormSubmit = async (formData) => {
     setFormError(null);
 
@@ -134,7 +133,7 @@ const MenuManagement = () => {
    if (loading) return <AppLayout sidebar={<AppSidebar />}><div className="p-8">Loading...</div></AppLayout>;
   if (error) return <AppLayout sidebar={<AppSidebar />}><div className="p-8 text-red-500">Error: {error}</div></AppLayout>;
 
-  const isManager = user.role === 'manager';
+  
   const modalTitle = isManager ? "Request Item Deletion" : "Delete Menu Item";
   const modalConfirmText = isManager ? "Yes, Send Request" : "Yes, Delete";
   const modalBody = isManager ? (
@@ -146,7 +145,7 @@ const MenuManagement = () => {
     </>
   );
 
-
+   const isManager = user.role === 'manager';
    return (
     <AppLayout sidebar={<AppSidebar />}>
       {isFormOpen && (
@@ -166,17 +165,25 @@ const MenuManagement = () => {
         </div>
       )}
 
-            <ConfirmationModal
+                  <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
-        title={modalTitle}
-        confirmText={modalConfirmText}
+        title={isManager ? "Request Item Deletion" : "Delete Menu Item"}
+        confirmText={isManager ? "Yes, Send Request" : "Yes, Delete"}
         isLoading={isDeleting}
         confirmButtonClass={isManager ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}
       >
-        {modalBody}
+        {isManager ? (
+          <p>Are you sure you want to request the permanent deletion of <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>? This will be sent to an admin for approval.</p>
+        ) : (
+          <>
+            <p>Are you sure you want to permanently delete the item <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>?</p>
+            <p className="mt-2 text-sm text-red-600">This action cannot be undone.</p>
+          </>
+        )}
       </ConfirmationModal>
+
 
 
       <main className="flex-1 p-6">
