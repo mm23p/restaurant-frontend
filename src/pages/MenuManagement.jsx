@@ -176,7 +176,7 @@ const handleConfirmDelete = async () => {
       >
         {isManager ? (
           <p>Are you sure you want to request the permanent deletion of <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>? This will be sent to an admin for approval.</p>
-        ) : (
+        ) : ( 
           <>
             <p>Are you sure you want to permanently delete the item <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>?</p>
             <p className="mt-2 text-sm text-red-600">This action cannot be undone.</p>
