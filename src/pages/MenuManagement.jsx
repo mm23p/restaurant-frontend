@@ -133,6 +133,8 @@ const handleConfirmDelete = async () => {
    if (loading) return <AppLayout sidebar={<AppSidebar />}><div className="p-8">Loading...</div></AppLayout>;
   if (error) return <AppLayout sidebar={<AppSidebar />}><div className="p-8 text-red-500">Error: {error}</div></AppLayout>;
 
+
+  const isManager = user.role.toLowerCase() === 'manager';
   
   const modalTitle = isManager ? "Request Item Deletion" : "Delete Menu Item";
   const modalConfirmText = isManager ? "Yes, Send Request" : "Yes, Delete";
@@ -145,7 +147,6 @@ const handleConfirmDelete = async () => {
     </>
   );
 
-   const isManager = user.role === 'manager';
    return (
     <AppLayout sidebar={<AppSidebar />}>
       {isFormOpen && (
@@ -165,23 +166,16 @@ const handleConfirmDelete = async () => {
         </div>
       )}
 
-                  <ConfirmationModal
+                   <ConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDelete}
-        title={isManager ? "Request Item Deletion" : "Delete Menu Item"}
-        confirmText={isManager ? "Yes, Send Request" : "Yes, Delete"}
+        title={modalTitle}
+        confirmText={modalConfirmText}
         isLoading={isDeleting}
         confirmButtonClass={isManager ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}
       >
-        {isManager ? (
-          <p>Are you sure you want to request the permanent deletion of <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>? This will be sent to an admin for approval.</p>
-        ) : ( 
-          <>
-            <p>Are you sure you want to permanently delete the item <strong className="font-bold text-gray-800">"{itemToDelete?.name}"</strong>?</p>
-            <p className="mt-2 text-sm text-red-600">This action cannot be undone.</p>
-          </>
-        )}
+        {modalBody}
       </ConfirmationModal>
 
 
