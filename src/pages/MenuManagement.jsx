@@ -109,8 +109,7 @@ const handleConfirmDelete = async () => {
   }
 };
 
-
-   const handleFormSubmit = async (formData) => {
+     const handleFormSubmit = async (formData) => {
     setFormError(null);
 
     const dataToSubmit = {
@@ -122,30 +121,34 @@ const handleConfirmDelete = async () => {
     };
 
     try {
+      let responseMessage = '';
+      const isManager = user && user.role && user.role.toLowerCase() === 'manager';
+
       if (editingItem) {
+        // --- EDITING AN ITEM ---
         await axios.put(`/menu/${editingItem.id}`, dataToSubmit);
+        responseMessage = isManager 
+          ? 'Your edit request has been submitted for approval!' 
+          : 'Item updated successfully!';
       } else {
+        // --- ADDING A NEW ITEM ---
         await axios.post('/menu', dataToSubmit);
+        responseMessage = isManager
+          ? 'Request to add item has been submitted for approval.'
+          : 'Item added successfully!';
       }
+
       setIsFormOpen(false);
-
-      // Set a role-specific success message
-      if (user.role === 'manager' && editingItem) {
-        setSuccessMessage('Your edit request has been submitted for approval!');
-      } else {
-        setSuccessMessage(editingItem ? 'Item updated successfully!' : 'Item added successfully!');
-      }
-      setTimeout(() => setSuccessMessage(null), 5000); // Clear after 5 seconds
-
-      fetchData();
+      setSuccessMessage(responseMessage);
+      setTimeout(() => setSuccessMessage(null), 5000);
+      fetchData(); // Refresh the data list
     } catch (err) {
       const message = err.response?.data?.error || 'An unexpected error occurred.';
       setFormError(message);
     }
   };
 
-
-   if (loading) return <AppLayout sidebar={<AppSidebar />}><div className="p-8">Loading...</div></AppLayout>;
+ if (loading || !user) return <AppLayout sidebar={<AppSidebar />}><div className="p-8">Loading...</div></AppLayout>;
   if (error) return <AppLayout sidebar={<AppSidebar />}><div className="p-8 text-red-500">Error: {error}</div></AppLayout>;
 
 
