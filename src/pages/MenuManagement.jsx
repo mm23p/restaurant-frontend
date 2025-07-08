@@ -211,7 +211,7 @@ const handleConfirmDelete = async () => {
           <h1 className="text-3xl font-bold text-gray-800">Menu Management</h1>
           <button onClick={handleAddItem} className="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 flex items-center justify-center gap-2">
             <FaPlus /> Add new item
-          </button>
+          </button> 
         </div>
 
         <div className="bg-white p-4 rounded-lg shadow-sm mb-6 space-y-4">
