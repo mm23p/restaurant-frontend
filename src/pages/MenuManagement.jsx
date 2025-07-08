@@ -210,7 +210,7 @@ const handleConfirmDelete = async () => {
         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-4">  
           <h1 className="text-3xl font-bold text-gray-800">Menu Management</h1>
           <button onClick={handleAddItem} className="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 flex items-center justify-center gap-2">
-            <FaPlus /> Add x items...
+            <FaPlus /> Add new item
           </button>
         </div>
 
