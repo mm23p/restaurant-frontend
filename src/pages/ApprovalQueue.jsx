@@ -3,11 +3,62 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../components/AppLayout';
 import axios from '../api/axios';
-import { FaCheck, FaTimes, FaPlus, FaTrashAlt, FaPen } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaPlus, FaTrashAlt, FaPen, FaArrowRight } from 'react-icons/fa';
 import AppSidebar from '../components/AppSidebar';
 
+
+const RequestDetails = ({ type, payload }) => {
+  // A helper to format keys like 'is_available' into 'Is Available'
+  const formatKey = (key) => {
+    return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  // For ADD or DELETE requests, we just display the simple properties.
+  if (type === 'MENU_ITEM_ADD' || type === 'MENU_ITEM_DELETE') {
+    return (
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+        {Object.entries(payload).map(([key, value]) => {
+          if (key === 'name' || key === 'price' || key === 'category') {
+            return (
+              <React.Fragment key={key}>
+                <dt className="font-semibold text-gray-600">{formatKey(key)}:</dt>
+                <dd className="text-gray-800">{value.toString()}</dd>
+              </React.Fragment>
+            );
+          }
+          return null;
+        })}
+      </div>
+    );
+  }
+
+  // For EDIT requests, we would ideally show a "before" and "after".
+  // This is a more advanced feature, so for now, we'll just show the proposed new values.
+  if (type === 'MENU_ITEM_EDIT') {
+     return (
+      <div>
+        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Proposed Changes:</p>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          {Object.entries(payload).map(([key, value]) => {
+            // Filter out internal or unhelpful fields
+            if (['requesterNotes', 'id', 'createdAt', 'updatedAt', 'approval_status'].includes(key)) return null;
+            return (
+              <React.Fragment key={key}>
+                <dt className="font-semibold text-gray-600">{formatKey(key)}:</dt>
+                <dd className="text-indigo-700 font-semibold">{value.toString()}</dd>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback for any other type
+  return <pre className="bg-gray-100 p-2 rounded-md text-xs mt-1 whitespace-pre-wrap">{JSON.stringify(payload, null, 2)}</pre>;
+};
 // A helper component to render the cards consistently
-const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
+/* const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
   let title, icon, payload, notes, approveEndpoint, denyEndpoint, id;
 
   // This logic determines how to display each type of request
@@ -68,7 +119,79 @@ const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
       </div>
     </div>
   );
+}; */
+
+const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
+  let title, icon, notes, approveEndpoint, denyEndpoint, id;
+
+  switch (req.type) {
+    case 'MENU_ITEM_ADD':
+      id = req.id;
+      title = `Add Request: "${req.payload.name}"`;
+      icon = <FaPlus className="text-green-500" />;
+      notes = req.notes;
+      approveEndpoint = `/menu/${id}/approve`;
+      denyEndpoint = `/menu/${id}`;
+      break;
+    case 'MENU_ITEM_EDIT':
+      id = req.id;
+      title = "Edit Request";
+      icon = <FaPen className="text-blue-500" />;
+      notes = req.notes;
+      approveEndpoint = `/requests/${id}/approve`;
+      denyEndpoint = `/requests/${id}/deny`;
+      break;
+    case 'MENU_ITEM_DELETE':
+      id = req.id;
+      title = `Delete Request: "${req.payload.name}"`;
+      icon = <FaTrashAlt className="text-red-500" />;
+      notes = req.notes;
+      approveEndpoint = `/requests/${id}/approve`;
+      denyEndpoint = `/requests/${id}/deny`;
+      break;
+    default:
+      return null;
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-md border-l-4 border-yellow-400 overflow-hidden">
+      <div className="p-4">
+        <div className="flex justify-between items-start">
+          <div className="flex items-center gap-3">
+            {icon}
+            <h3 className="text-lg font-semibold">{title}</h3>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => onApprove(approveEndpoint)} disabled={isProcessing} className="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-md hover:bg-green-600">
+              <FaCheck /> Approve
+            </button>
+            <button onClick={() => onDeny(denyEndpoint, req.type)} disabled={isProcessing} className="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-md hover:bg-red-600">
+              <FaTimes /> Deny
+            </button>
+          </div>
+        </div>
+        <p className="mt-2 text-sm text-gray-500">Requested by <strong className="text-gray-800">{req.requester?.full_name || 'Manager'}</strong></p>
+      </div>
+      <div className="bg-gray-50 p-4 border-t border-gray-200 space-y-2">
+        <div>
+          <p className="text-sm font-bold text-gray-700">Details:</p>
+          {/* --- USE THE NEW FORMATTING COMPONENT --- */}
+          <div className="mt-2">
+            <RequestDetails type={req.type} payload={req.payload} />
+          </div>
+        </div>
+        {notes && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="text-sm font-bold text-gray-700">Notes:</p>
+            <p className="text-sm bg-blue-50 p-2 rounded-md mt-1">{notes}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
+
+
 
 const ApprovalQueue = () => {
   const [requests, setRequests] = useState([]);
