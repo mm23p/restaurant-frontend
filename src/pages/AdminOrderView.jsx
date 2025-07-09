@@ -5,6 +5,37 @@ import { FaEye, FaRegFrown, FaCalendarDay, FaSearch } from 'react-icons/fa';
 import AppLayout from '../components/AppLayout';
 import AppSidebar from '../components/AppSidebar';
 
+
+const OrderSummaryFooter = ({ orders }) => {
+  // This calculation will only re-run when the 'orders' prop changes.
+  const summary = useMemo(() => {
+    if (!orders || orders.length === 0) {
+      return { totalOrders: 0, totalSales: 0 };
+    }
+    const totalSales = orders.reduce((sum, order) => sum + parseFloat(order.total_price), 0);
+    return {
+      totalOrders: orders.length,
+      totalSales: totalSales,
+    };
+  }, [orders]);
+
+  return (
+    <div className="mt-8 p-4 bg-gray-800 text-white rounded-lg shadow-lg sticky bottom-4">
+      <h3 className="text-lg font-bold mb-2">Summary for Filtered Orders</h3>
+      <div className="flex justify-around text-center">
+        <div>
+          <p className="text-gray-400 text-sm uppercase">Total Orders</p>
+          <p className="text-2xl font-semibold">{summary.totalOrders}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 text-sm uppercase">Total Sales</p>
+          <p className="text-2xl font-semibold">${summary.totalSales.toFixed(2)}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminOrderView = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -122,15 +153,18 @@ const AdminOrderView = () => {
     };
 
    
-    const renderContent = () => {
+     const renderContent = () => {
         if (loading) {
             return <p className="text-center text-gray-500 py-10">Loading orders...</p>;
         }
         if (error) {
             return <p className="text-center text-red-500 py-10">{error}</p>;
         }
-        if (Object.keys(groupedOrders).length > 0) {
-            return Object.keys(groupedOrders).map(date => (
+
+        const dates = Object.keys(groupedOrders);
+
+        if (dates.length > 0) {
+            return dates.map(date => (
                 <div key={date} className="mb-8">
                     <div className="flex items-center gap-3 mb-4">
                         <FaCalendarDay className="text-indigo-600" />
@@ -156,7 +190,7 @@ const AdminOrderView = () => {
                                             <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">MM-{order.id}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(order.createdAt).toLocaleTimeString()}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">{order.user?.full_name || 'N/A'}</td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right font-semibold">{parseFloat(order.total_price).toFixed(2)}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-right font-semibold">${parseFloat(order.total_price).toFixed(2)}</td>
                                             <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
                                                 <button onClick={() => navigate(`/receipt/${order.id}`)} className="text-indigo-600 hover:text-indigo-900 flex items-center gap-1 mx-auto">
                                                     <FaEye /> View
@@ -201,7 +235,7 @@ const AdminOrderView = () => {
                             <label className="text-sm font-medium text-gray-700">Filter by Waiter</label>
                             <input
                                 type="text"
-                                list="waiter-suggestions" // Connects to the datalist below
+                                list="waiter-suggestions"
                                 placeholder="Select or type a name..."
                                 value={waiterSearch}
                                 onChange={(e) => setWaiterSearch(e.target.value)}
@@ -222,7 +256,6 @@ const AdminOrderView = () => {
                              </div>
                         </div>
 
-                        {/* End Date & Time */}
                        <div className="flex-1 min-w-0">
                              <label className="text-sm font-medium text-gray-700">End Date & Time</label>
                              <div className="flex gap-2 mt-1">
@@ -239,6 +272,10 @@ const AdminOrderView = () => {
                 </div>
 
                 {renderContent()}
+
+                {!loading && !error && orders.length > 0 && (
+                  <OrderSummaryFooter orders={orders} />
+                )}
             </div>
         </AppLayout>
     );
