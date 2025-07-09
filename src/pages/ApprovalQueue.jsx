@@ -3,18 +3,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../components/AppLayout';
 import axios from '../api/axios';
-import { FaCheck, FaTimes, FaPlus, FaTrashAlt, FaPen, FaArrowRight } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaPlus, FaTrashAlt, FaPen } from 'react-icons/fa';
 import AppSidebar from '../components/AppSidebar';
 
-
+// Helper component to format the details in a user-friendly way
 const RequestDetails = ({ type, payload }) => {
-  // A helper to format keys like 'is_available' into 'Is Available'
-  const formatKey = (key) => {
-    return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
+  const formatKey = (key) => key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-  // For ADD or DELETE requests, we just display the simple properties.
-  
   if (type === 'MENU_ITEM_ADD' || type === 'MENU_ITEM_DELETE') {
     return (
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
@@ -23,9 +18,6 @@ const RequestDetails = ({ type, payload }) => {
             return (
               <React.Fragment key={key}>
                 <dt className="font-semibold text-gray-600">{formatKey(key)}:</dt>
-                {/* --- THE FIX IS HERE --- */}
-                {/* We now check if value exists before calling .toString() */}
-                {/* If it's null or undefined, we display a dash. */}
                 <dd className="text-gray-800">{value?.toString() || '-'}</dd>
               </React.Fragment>
             );
@@ -35,15 +27,13 @@ const RequestDetails = ({ type, payload }) => {
       </div>
     );
   }
-  // For EDIT requests, we would ideally show a "before" and "after".
-  // This is a more advanced feature, so for now, we'll just show the proposed new values.
+
   if (type === 'MENU_ITEM_EDIT') {
      return (
       <div>
         <p className="text-xs font-bold text-gray-500 uppercase mb-2">Proposed Changes:</p>
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           {Object.entries(payload).map(([key, value]) => {
-            // Filter out internal or unhelpful fields
             if (['requesterNotes', 'id', 'createdAt', 'updatedAt', 'approval_status'].includes(key)) return null;
             return (
               <React.Fragment key={key}>
@@ -57,38 +47,28 @@ const RequestDetails = ({ type, payload }) => {
     );
   }
 
-  // Fallback for any other type
   return <pre className="bg-gray-100 p-2 rounded-md text-xs mt-1 whitespace-pre-wrap">{JSON.stringify(payload, null, 2)}</pre>;
 };
 
-
+// The card component to display a single request
 const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
-  let title, icon, notes, approveEndpoint, denyEndpoint, id;
+  let title, icon, notes;
 
   switch (req.type) {
     case 'MENU_ITEM_ADD':
-      id = req.id;
       title = `Add Request: "${req.payload.name}"`;
       icon = <FaPlus className="text-green-500" />;
       notes = req.notes;
-      approveEndpoint = `/menu/${id}/approve`;
-      denyEndpoint = `/menu/${id}`;
       break;
     case 'MENU_ITEM_EDIT':
-      id = req.id;
       title = "Edit Request";
       icon = <FaPen className="text-blue-500" />;
       notes = req.notes;
-      approveEndpoint = `/requests/${id}/approve`;
-      denyEndpoint = `/requests/${id}/deny`;
       break;
     case 'MENU_ITEM_DELETE':
-      id = req.id;
       title = `Delete Request: "${req.payload.name}"`;
       icon = <FaTrashAlt className="text-red-500" />;
       notes = req.notes;
-      approveEndpoint = `/requests/${id}/approve`;
-      denyEndpoint = `/requests/${id}/deny`;
       break;
     default:
       return null;
@@ -103,10 +83,10 @@ const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
             <h3 className="text-lg font-semibold">{title}</h3>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => onApprove(approveEndpoint)} disabled={isProcessing} className="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-md hover:bg-green-600">
+            <button onClick={onApprove} disabled={isProcessing} className="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-md hover:bg-green-600">
               <FaCheck /> Approve
             </button>
-            <button onClick={() => onDeny(denyEndpoint, req.type)} disabled={isProcessing} className="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-md hover:bg-red-600">
+            <button onClick={onDeny} disabled={isProcessing} className="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-md hover:bg-red-600">
               <FaTimes /> Deny
             </button>
           </div>
@@ -116,7 +96,6 @@ const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
       <div className="bg-gray-50 p-4 border-t border-gray-200 space-y-2">
         <div>
           <p className="text-sm font-bold text-gray-700">Details:</p>
-          {/* --- USE THE NEW FORMATTING COMPONENT --- */}
           <div className="mt-2">
             <RequestDetails type={req.type} payload={req.payload} />
           </div>
@@ -132,8 +111,6 @@ const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
   );
 };
 
-
-
 const ApprovalQueue = () => {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -143,15 +120,15 @@ const ApprovalQueue = () => {
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch both types of pending actions in parallel
       const [menuDraftsRes, changeRequestsRes] = await Promise.all([
-        axios.get('/menu?approval_status=pending_approval'), // A special query to get drafts
-        axios.get('/requests') // The existing endpoint for edit/delete requests
+        axios.get('/menu?approval_status=pending_approval'),
+        axios.get('/requests')
       ]);
 
-      // Format both lists into a unified structure
       const formattedAddRequests = menuDraftsRes.data.map(item => ({
-        id: item.id, // The ID is the menu item ID itself
+        id: `menu-add-${item.id}`,
+        approveEndpoint: `/menu/${item.id}/approve`,
+        denyEndpoint: `/menu/${item.id}`,
         type: 'MENU_ITEM_ADD',
         payload: item,
         notes: 'Manager has submitted a new item for approval.',
@@ -159,7 +136,9 @@ const ApprovalQueue = () => {
       }));
 
       const formattedEditDeleteRequests = changeRequestsRes.data.map(req => ({
-        id: req.id, // The ID is the change_request ID
+        id: `changereq-${req.id}`,
+        approveEndpoint: `/requests/${req.id}/approve`,
+        denyEndpoint: `/requests/${req.id}/deny`,
         type: req.requestType,
         payload: req.payload,
         requester: req.requester,
@@ -182,27 +161,28 @@ const ApprovalQueue = () => {
     fetchRequests();
   }, [fetchRequests]);
 
-  const handleApprove = async (endpoint) => {
-    setProcessingId(endpoint);
+  const handleApprove = async (endpoint, requestId) => {
+    setProcessingId(requestId);
     try {
       await axios.post(endpoint, {});
-      fetchRequests();
+      setRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to approve request.');
+      fetchRequests();
     } finally {
       setProcessingId(null);
     }
   };
 
-  const handleDeny = async (endpoint, type) => {
-    setProcessingId(endpoint);
+  const handleDeny = async (endpoint, type, requestId) => {
+    setProcessingId(requestId);
     try {
       if (type === 'MENU_ITEM_ADD') {
         if (!window.confirm("Denying this will permanently delete the draft item. Are you sure?")) {
           setProcessingId(null);
           return;
         }
-        await axios.delete(endpoint); // Denying a draft is a DELETE call
+        await axios.delete(endpoint);
       } else {
         const reason = window.prompt("Please provide a reason for denying this request:");
         if (!reason || !reason.trim()) {
@@ -212,9 +192,10 @@ const ApprovalQueue = () => {
         }
         await axios.post(endpoint, { adminNotes: reason });
       }
-      fetchRequests();
+      setRequests(prevRequests => prevRequests.filter(req => req.id !== requestId));
     } catch (err) {
       alert(err.response?.data?.error || 'Failed to deny request.');
+      fetchRequests();
     } finally {
       setProcessingId(null);
     }
@@ -237,10 +218,10 @@ const ApprovalQueue = () => {
           <div className="space-y-4">
             {requests.map(req => (
               <RequestCard
-                key={`${req.type}-${req.id}`} // A more unique key
+                key={req.id}
                 req={req}
-                onApprove={handleApprove}
-                onDeny={handleDeny}
+                onApprove={() => handleApprove(req.approveEndpoint, req.id)}
+                onDeny={() => handleDeny(req.denyEndpoint, req.type, req.id)}
                 isProcessing={processingId === req.id}
               />
             ))}
