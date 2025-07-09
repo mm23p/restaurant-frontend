@@ -1,3 +1,5 @@
+// src/pages/AdminOrderView.jsx
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../api/axios';
@@ -5,9 +7,8 @@ import { FaEye, FaRegFrown, FaCalendarDay, FaSearch } from 'react-icons/fa';
 import AppLayout from '../components/AppLayout';
 import AppSidebar from '../components/AppSidebar';
 
-
+// --- 1. RESTYLED: A new look for the summary footer to match a light theme ---
 const OrderSummaryFooter = ({ orders }) => {
-  // This calculation will only re-run when the 'orders' prop changes.
   const summary = useMemo(() => {
     if (!orders || orders.length === 0) {
       return { totalOrders: 0, totalSales: 0 };
@@ -20,59 +21,50 @@ const OrderSummaryFooter = ({ orders }) => {
   }, [orders]);
 
   return (
-    <div className="mt-8 p-4 bg-gray-800 text-white rounded-lg shadow-lg sticky bottom-4">
-      <h3 className="text-lg font-bold mb-2">Summary for Filtered Orders</h3>
-      <div className="flex justify-around text-center">
+    <div className="mt-8 p-4 bg-slate-50 border border-slate-200 rounded-lg shadow-sm">
+      <h3 className="text-lg font-semibold text-slate-800 mb-3">Summary for Filtered Orders</h3>
+      <div className="flex justify-around text-center border-t border-slate-200 pt-3">
         <div>
-          <p className="text-gray-400 text-sm uppercase">Total Orders</p>
-          <p className="text-2xl font-semibold">{summary.totalOrders}</p>
+          <p className="text-slate-500 text-sm uppercase tracking-wider">Total Orders</p>
+          <p className="text-2xl font-bold text-indigo-600">{summary.totalOrders}</p>
         </div>
         <div>
-          <p className="text-gray-400 text-sm uppercase">Total Sales</p>
-          <p className="text-2xl font-semibold">${summary.totalSales.toFixed(2)}</p>
+          <p className="text-slate-500 text-sm uppercase tracking-wider">Total Sales</p>
+          <p className="text-2xl font-bold text-indigo-600">${summary.totalSales.toFixed(2)}</p>
         </div>
       </div>
     </div>
   );
 };
 
+
 const AdminOrderView = () => {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const navigate = useNavigate();
-
     const [waiterList, setWaiterList] = useState([]);
     const [waiterSearch, setWaiterSearch] = useState('');
-    
     const [dateRange, setDateRange] = useState({
         start: new Date().toISOString().slice(0, 10),
         end: new Date().toISOString().slice(0, 10),
-        startTime: '00:00', // Default to start of day
-        endTime: '23:59',   // Default to end of day
+        startTime: '00:00',
+        endTime: '23:59',
     });
-    
     const [activeFilter, setActiveFilter] = useState('Today');
 
-    const combineDateTime = (date, time) => {
-        return new Date(`${date}T${time}:00`).toISOString();
-    }
+    const combineDateTime = (date, time) => new Date(`${date}T${time}:00`).toISOString();
 
-
-     const fetchOrdersAndWaiters = async (params) => {
+    const fetchOrdersAndWaiters = async (params) => {
         setLoading(true);
         setError(null);
         try {
-            // --- 2. FETCH USERS AND ORDERS CONCURRENTLY ---
             const [ordersResponse, usersResponse] = await Promise.all([
                 axios.get('/orders', { params }),
-                axios.get('/users') // Assumes this endpoint exists and returns all users
+                axios.get('/users')
             ]);
-            
             setOrders(ordersResponse.data);
-            // Filter for users with the 'waiter' role and store them for the combo box
             setWaiterList(usersResponse.data.filter(user => user.role === 'waiter'));
-            
         } catch (err) {
             setError('Failed to fetch data. Please try again later.');
             console.error(err);
@@ -81,16 +73,15 @@ const AdminOrderView = () => {
         }
     };
 
-
-     useEffect(() => {
-        fetchOrdersAndWaiters({
-            startDate: combineDateTime(dateRange.start, dateRange.startTime),
-            endDate: combineDateTime(dateRange.end, dateRange.endTime),
-        });
+    useEffect(() => {
+        // Initial fetch for today's orders
+        const today = new Date();
+        const start = new Date(today.setHours(0,0,0,0)).toISOString();
+        const end = new Date(today.setHours(23,59,59,999)).toISOString();
+        fetchOrdersAndWaiters({ startDate: start, endDate: end });
     }, []);
 
-  
-     const groupedOrders = useMemo(() => {
+    const groupedOrders = useMemo(() => {
         return orders.reduce((acc, order) => {
             const date = new Date(order.createdAt).toLocaleDateString('en-CA');
             if (!acc[date]) acc[date] = [];
@@ -99,69 +90,68 @@ const AdminOrderView = () => {
         }, {});
     }, [orders]);
 
-
- const handleApplyFilters = () => {
+    const handleApplyFilters = () => {
         setActiveFilter('Custom');
-        fetchOrdersAndWaiters({ // Use the new concurrent fetch function
-            waiter: waiterSearch,
+        fetchOrdersAndWaiters({
+            waiter: waiterSearch || null, // Send null if empty
             startDate: combineDateTime(dateRange.start, dateRange.startTime),
             endDate: combineDateTime(dateRange.end, dateRange.endTime),
         });
     };
 
-       const handleQuickFilterClick = (filter) => {
+    // --- 2. FIXED: The corrected logic for the quick date filters ---
+    const handleQuickFilterClick = (filter) => {
         setActiveFilter(filter);
+        
         const today = new Date();
-        let start = new Date();
-        let end = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let startDate = new Date(today);
+        let endDate = new Date(today);
 
         switch (filter) {
             case 'Today':
-                // Handled by default state
+                // Already set
                 break;
             case 'Yesterday':
-                start.setDate(today.getDate() - 1);
-                end.setDate(today.getDate() - 1);
+                startDate.setDate(today.getDate() - 1);
+                endDate.setDate(today.getDate() - 1);
                 break;
             case 'Last 7 Days':
-                start.setDate(today.getDate() - 6);
+                startDate.setDate(today.getDate() - 6);
+                // endDate is already today
                 break;
             case 'This Month':
-                start = new Date(today.getFullYear(), today.getMonth(), 1);
-                end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                // endDate is already today
                 break;
             default:
                 return;
         }
 
-        const newStartDate = start.toISOString().slice(0, 10);
-        const newEndDate = end.toISOString().slice(0, 10);
+        const newStartDateStr = startDate.toISOString().slice(0, 10);
+        const newEndDateStr = endDate.toISOString().slice(0, 10);
 
-        const newStartTime = '00:00';
-        const newEndTime = '23:59';
+        setDateRange({
+            start: newStartDateStr,
+            end: newEndDateStr,
+            startTime: '00:00',
+            endTime: '23:59',
+        });
 
-        // Update the UI state
-        //setDateRange({ start: newStartDate, end: newEndDate });
-
-         setDateRange({ start: newStartDate, end: newEndDate, startTime: newStartTime, endTime: newEndTime });
-
-         fetchOrdersAndWaiters({ // <-- Use the correct function name
-    waiter: waiterSearch,
-    startDate: combineDateTime(newStartDate, newStartTime),
-    endDate: combineDateTime(newEndDate, newEndTime),
-});
+        // Fetch data using the full date objects for accuracy
+        fetchOrdersAndWaiters({
+            waiter: waiterSearch || null,
+            startDate: startDate.toISOString(),
+            endDate: new Date(endDate.setHours(23, 59, 59, 999)).toISOString(),
+        });
     };
 
-   
-     const renderContent = () => {
-        if (loading) {
-            return <p className="text-center text-gray-500 py-10">Loading orders...</p>;
-        }
-        if (error) {
-            return <p className="text-center text-red-500 py-10">{error}</p>;
-        }
+    const renderContent = () => {
+        if (loading) return <p className="text-center text-gray-500 py-10">Loading orders...</p>;
+        if (error) return <p className="text-center text-red-500 py-10">{error}</p>;
 
-        const dates = Object.keys(groupedOrders);
+        const dates = Object.keys(groupedOrders).sort((a, b) => new Date(b) - new Date(a));
 
         if (dates.length > 0) {
             return dates.map(date => (
@@ -169,7 +159,7 @@ const AdminOrderView = () => {
                     <div className="flex items-center gap-3 mb-4">
                         <FaCalendarDay className="text-indigo-600" />
                         <h2 className="text-xl font-semibold text-gray-700">
-                            {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                            {new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                         </h2>
                     </div>
                     <div className="bg-white rounded-lg shadow-md overflow-hidden">
