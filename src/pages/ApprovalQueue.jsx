@@ -81,8 +81,8 @@ const ApprovalQueue = () => {
     try {
       // Fetch both types of pending actions in parallel
       const [menuDraftsRes, changeRequestsRes] = await Promise.all([
-        axios.get('/api/menu?approval_status=pending_approval'), // A special query to get drafts
-        axios.get('/api/requests') // The existing endpoint for edit/delete requests
+        axios.get('/menu?approval_status=pending_approval'), // A special query to get drafts
+        axios.get('/requests') // The existing endpoint for edit/delete requests
       ]);
 
       // Format both lists into a unified structure
