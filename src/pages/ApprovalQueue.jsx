@@ -14,15 +14,19 @@ const RequestDetails = ({ type, payload }) => {
   };
 
   // For ADD or DELETE requests, we just display the simple properties.
+  
   if (type === 'MENU_ITEM_ADD' || type === 'MENU_ITEM_DELETE') {
     return (
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         {Object.entries(payload).map(([key, value]) => {
-          if (key === 'name' || key === 'price' || key === 'category') {
+          if (['name', 'price', 'category'].includes(key)) {
             return (
               <React.Fragment key={key}>
                 <dt className="font-semibold text-gray-600">{formatKey(key)}:</dt>
-                <dd className="text-gray-800">{value.toString()}</dd>
+                {/* --- THE FIX IS HERE --- */}
+                {/* We now check if value exists before calling .toString() */}
+                {/* If it's null or undefined, we display a dash. */}
+                <dd className="text-gray-800">{value?.toString() || '-'}</dd>
               </React.Fragment>
             );
           }
@@ -31,7 +35,6 @@ const RequestDetails = ({ type, payload }) => {
       </div>
     );
   }
-
   // For EDIT requests, we would ideally show a "before" and "after".
   // This is a more advanced feature, so for now, we'll just show the proposed new values.
   if (type === 'MENU_ITEM_EDIT') {
@@ -45,7 +48,7 @@ const RequestDetails = ({ type, payload }) => {
             return (
               <React.Fragment key={key}>
                 <dt className="font-semibold text-gray-600">{formatKey(key)}:</dt>
-                <dd className="text-indigo-700 font-semibold">{value.toString()}</dd>
+                <dd className="text-indigo-700 font-semibold">{value?.toString() || 'Not Set'}</dd>
               </React.Fragment>
             );
           })}
@@ -57,69 +60,7 @@ const RequestDetails = ({ type, payload }) => {
   // Fallback for any other type
   return <pre className="bg-gray-100 p-2 rounded-md text-xs mt-1 whitespace-pre-wrap">{JSON.stringify(payload, null, 2)}</pre>;
 };
-// A helper component to render the cards consistently
-/* const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
-  let title, icon, payload, notes, approveEndpoint, denyEndpoint, id;
 
-  // This logic determines how to display each type of request
-  switch (req.type) {
-    case 'MENU_ITEM_ADD':
-      id = req.id; // For drafts, the ID is the menu item ID
-      title = "New Item for Approval";
-      icon = <FaPlus className="text-green-500" />;
-      payload = req.payload;
-      notes = req.notes;
-      approveEndpoint = `/api/menu/${id}/approve`;
-      denyEndpoint = `/api/menu/${id}`; // Denying a draft means deleting it
-      break;
-    case 'MENU_ITEM_EDIT':
-    case 'MENU_ITEM_DELETE':
-      id = req.id; // For change requests, ID is the request ID
-      title = req.type === 'MENU_ITEM_EDIT' ? "Edit Request" : "Delete Request";
-      icon = req.type === 'MENU_ITEM_EDIT' ? <FaPen className="text-blue-500" /> : <FaTrashAlt className="text-red-500" />;
-      payload = req.payload;
-      notes = req.notes;
-      approveEndpoint = `/api/requests/${id}/approve`;
-      denyEndpoint = `/api/requests/${id}/deny`;
-      break;
-    default:
-      return null;
-  }
-
-  return (
-    <div className="bg-white rounded-lg shadow-md border-l-4 border-yellow-400 overflow-hidden">
-      <div className="p-4">
-        <div className="flex justify-between items-start">
-          <div className="flex items-center gap-3">
-            {icon}
-            <h3 className="text-lg font-semibold">{title}</h3>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => onApprove(approveEndpoint)} disabled={isProcessing} className="flex items-center gap-2 bg-green-500 text-white px-3 py-1.5 rounded-md hover:bg-green-600">
-              <FaCheck /> Approve
-            </button>
-            <button onClick={() => onDeny(denyEndpoint, req.type)} disabled={isProcessing} className="flex items-center gap-2 bg-red-500 text-white px-3 py-1.5 rounded-md hover:bg-red-600">
-              <FaTimes /> Deny
-            </button>
-          </div>
-        </div>
-        <p className="mt-2 text-sm text-gray-500">Requested by <strong className="text-gray-800">{req.requester?.full_name || 'Manager'}</strong></p>
-      </div>
-      <div className="bg-gray-50 p-4 border-t border-gray-200 space-y-2">
-        <div>
-          <p className="text-sm font-bold text-gray-700">Details:</p>
-          <pre className="bg-gray-100 p-2 rounded-md text-xs mt-1 whitespace-pre-wrap">{JSON.stringify(payload, null, 2)}</pre>
-        </div>
-        {notes && (
-          <div>
-            <p className="text-sm font-bold text-gray-700">Notes:</p>
-            <p className="text-sm bg-blue-50 p-2 rounded-md mt-1">{notes}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}; */
 
 const RequestCard = ({ req, onApprove, onDeny, isProcessing }) => {
   let title, icon, notes, approveEndpoint, denyEndpoint, id;
