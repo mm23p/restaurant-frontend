@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaUtensils, FaTrash, FaPlus, FaMinus, FaPrint, FaWifi, FaCloudUploadAlt } from 'react-icons/fa';
+import { FaUtensils, FaTrash, FaPlus, FaMinus, FaPrint, FaWifi } from 'react-icons/fa';
 import axios from '../api/axios';
 import { db } from '../db';
 import { useAuth } from '../context/AuthContext';
@@ -37,60 +37,38 @@ const OrderCreation = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [status, setStatus] = useState({ loading: true, error: null, success: false, orderId: null });
-  //const [syncing, setSyncing] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
-  // --- NEW, SIMPLER fetchMenuItems function ---
-  // This function now ONLY loads from the local cache.
+  // This function now only loads the menu from the local Dexie cache.
+  // The global AppSync component is responsible for keeping the cache updated.
   const fetchMenuItems = useCallback(async () => {
     setStatus(prev => ({ ...prev, loading: true, error: null }));
     try {
-      console.log("Loading menu from local cache...");
+      console.log("OrderCreation: Loading menu from local cache...");
       const localItems = await db.menuItems.toArray();
       
-      if (localItems.length === 0) {
-        console.warn("Local menu cache is empty.");
-        setStatus(prev => ({...prev, error: "Menu not downloaded. Please connect to the internet to sync."}));
+      if (localItems.length === 0 && !isOnline) {
+        setStatus(prev => ({...prev, loading: false, error: "Menu not available. Please connect to internet to sync."}));
+      } else {
+        setMenuItems(localItems);
+        setStatus(prev => ({ ...prev, loading: false }));
       }
-
-      setMenuItems(localItems);
     } catch (error) {
-      console.error("Failed to load menu from local cache:", error);
-      setStatus(prev => ({...prev, error: "Could not load menu data."}));
-    } finally {
-      setStatus(prev => ({ ...prev, loading: false }));
+      console.error("OrderCreation: Failed to load menu from local cache:", error);
+      setStatus(prev => ({...prev, loading: false, error: "Could not load menu data."}));
     }
-  }, []); // This no longer needs `isOnline` as a dependency
+  }, [isOnline]);
 
-  // Function to sync orders created while offline (unchanged)
-  /* const syncPendingOrders = useCallback(async () => {
-    const pendingOrders = await db.pendingOrders.toArray();
-    if (pendingOrders.length === 0) return;
-    
-    setSyncing(true);
-    console.log(`Syncing ${pendingOrders.length} pending orders...`);
-    
-    for (const order of pendingOrders) {
-        try {
-            await axios.post('/orders', order.data, {
-                headers: { Authorization: `Bearer ${order.token}` }
-            });
-            await db.pendingOrders.delete(order.id);
-            console.log(`Successfully synced offline order #${order.id}`);
-        } catch (error) {
-            console.error(`Failed to sync offline order #${order.id}. Will try again later.`, error);
-        }
-    }
-    setSyncing(false);
-  }, []); */
-
-  // --- Main effect hook ---
-  // Now simpler: it fetches the local menu and syncs orders if online.
+  // This effect fetches the local menu when the component mounts or online status changes.
   useEffect(() => {
     fetchMenuItems();
   }, [fetchMenuItems]);
 
-  // --- Core Business Logic (unchanged) ---
+
+  // The `syncPendingOrders` function has been removed from this file.
+  // It is now handled globally by the AppSync component in App.js.
+
+
   const handleAddItem = (item) => {
     setCurrentOrder(prev => {
       const exists = prev.find(i => i.menu_item_id === item.id);
@@ -110,9 +88,11 @@ const OrderCreation = () => {
 
   const handlePlaceOrder = () => {
     if (currentOrder.length === 0) return;
-    if (user.role === 'waiter') {
+    // For waiters, always show the confirmation modal which leads to logout.
+    if (user && user.role === 'waiter') {
       setIsConfirmModalOpen(true);
     } else {
+      // For Admin/Manager, place the order directly without the modal/logout.
       handleConfirmOrder();
     }
   };
@@ -127,18 +107,26 @@ const OrderCreation = () => {
       items: currentOrder.map(i => ({ menu_item_id: i.menu_item_id, quantity: i.quantity, price: i.price }))
     };
     setStatus({ loading: true, error: null, success: false, orderId: null });
+    
     try {
       let response;
       if (isOnline) {
+        console.log("OrderCreation: Placing order online...");
         response = await axios.post('/orders', orderData);
       } else {
+        console.log(`OrderCreation: Saving order locally for user ${user.id} with token...`);
+        // When offline, save the order locally with the current user's token.
         await db.pendingOrders.add({ createdAt: new Date(), token: token, data: orderData });
         response = { data: { orderId: 'local' } };
       }
+
+      // Role-based action after successful order placement
       if (user.role === 'waiter') {
+        alert('Order placed successfully! Ending shift.');
         logout();
         navigate('/login');
       } else {
+        // For Admin/Manager, just reset the form and show success
         setStatus({ loading: false, error: null, success: true, orderId: response.data.orderId });
         setCurrentOrder([]);
       }
@@ -161,7 +149,6 @@ const OrderCreation = () => {
     }
   };
 
-  // --- Memoized Calculations for UI (unchanged) ---
   const categories = useMemo(() => ['All', ...new Set(menuItems.map(item => item.category))], [menuItems]);
   const filteredMenuItems = useMemo(() => {
     return menuItems
@@ -172,27 +159,26 @@ const OrderCreation = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
 
-return (
+  return (
     <AppLayout sidebar={<AppSidebar />}>
       <ConfirmationModal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
         onConfirm={handleConfirmOrder}
-        title="Confirm Order"
+        title="Confirm Order & End Shift"
         confirmText="Yes, Place Order & Log Out"
         cancelText="No, Cancel"
         confirmButtonClass="bg-green-600 hover:bg-green-700 text-lg px-6 py-3"
         cancelButtonClass="bg-gray-200 hover:bg-gray-300 text-gray-800"
       >
         <p className="text-lg text-gray-700">Are you sure you want to place this order?</p>
-        <p className="mt-2 text-sm text-red-600">This will also end your current session.</p>
+        <p className="mt-2 text-sm text-red-600 font-semibold">This action will complete the order and log you out.</p>
       </ConfirmationModal>
 
       <div className="flex flex-col h-full bg-gray-100">
         
         <div className="p-2 bg-gray-800 text-white text-center text-sm flex items-center justify-center gap-4 shrink-0">
           {isOnline ? ( <span className="flex items-center gap-2 text-green-400"><FaWifi /> Online</span> ) : ( <span className="flex items-center gap-2 text-yellow-400"><FaWifi /> OFFLINE MODE</span> )}
-          {/* The 'syncing' indicator is removed from here. It could be moved to a global header if desired. */}
         </div>
 
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 overflow-hidden">
@@ -209,6 +195,7 @@ return (
               ))}
             </div>
             <div className="p-4 overflow-y-auto flex-1">
+              {status.loading ? <p>Loading menu...</p> : status.error ? <p className="text-red-500">{status.error}</p> :
               <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredMenuItems.map(item => {
                   const isItemDisabled = !item.is_available || (item.track_quantity && item.quantity <= 0);
@@ -233,6 +220,7 @@ return (
                   );
                 })}
               </div>
+              }
             </div>
           </div>
 

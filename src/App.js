@@ -23,11 +23,11 @@ import ApprovalQueue from './pages/ApprovalQueue'; // The new page for admins
 // --- Import THE CORRECT Component for protecting routes ---
 import ProtectedRoute from './components/ProtectedRoute';
 
-
 const AppSync = () => {
   const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  // Effect to listen for online/offline status changes
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -39,67 +39,69 @@ const AppSync = () => {
     };
   }, []);
 
-  // --- THIS IS THE ORDER SYNC LOGIC, MOVED FROM OrderCreation.jsx ---
+  // The single, reliable function to sync pending orders
   const syncPendingOrders = useCallback(async () => {
     const pendingOrders = await db.pendingOrders.toArray();
     if (pendingOrders.length === 0) {
-      console.log("No pending orders to sync.");
+      console.log("[SYNC] No pending orders to sync.");
       return;
     }
     
     console.log(`[SYNC] Found ${pendingOrders.length} pending orders. Attempting to sync...`);
     
+    let successfulSyncs = 0;
     for (const order of pendingOrders) {
       try {
-        // Use the specific token stored with the offline order for authentication
+        // --- THIS IS THE CRITICAL LOGIC ---
+        // We use the specific token stored WITH the offline order for authentication.
+        // This ensures the order is attributed to the correct waiter.
         await axios.post('/orders', order.data, {
           headers: { Authorization: `Bearer ${order.token}` }
         });
-        await db.pendingOrders.delete(order.id); // Remove from queue on success
+        // If the server call succeeds, delete the order from the local queue.
+        await db.pendingOrders.delete(order.id);
         console.log(`[SYNC] Successfully synced offline order #${order.id}`);
+        successfulSyncs++;
       } catch (error) {
-        console.error(`[SYNC] Failed to sync offline order #${order.id}. Will try again later.`, error);
+        // If the token is expired or invalid, the server will return an error.
+        // We log it and continue to the next order.
+        console.error(`[SYNC] Failed to sync offline order #${order.id}. Server responded:`, error.response?.data || error.message);
       }
     }
-    console.log("[SYNC] Sync process finished.");
+    console.log(`[SYNC] Sync process finished. ${successfulSyncs} orders synced.`);
   }, []);
 
+  // This master effect runs all sync tasks when the app comes online with a logged-in user.
   useEffect(() => {
-    const syncAllData = async () => {
+    const runAllSyncTasks = async () => {
       if (isOnline && user) {
-        console.log("App is online with a logged-in user. Running all sync tasks.");
+        console.log("[SYNC] App is online. Running all sync tasks...");
         
-        // --- 1. Sync Staff List ---
+        // 1. Sync Staff List
         try {
-          console.log("[SYNC] Proactively syncing staff list...");
-          const response = await axios.get('/users/staff');
-          await db.users.bulkPut(response.data);
-          console.log(`[SYNC] Successfully cached ${response.data.length} staff members.`);
-        } catch (error) {
-          console.error("[SYNC] Failed to sync staff list:", error);
-        }
+          const staffRes = await axios.get('/users/staff');
+          await db.users.bulkPut(staffRes.data);
+          console.log(`[SYNC] Cached ${staffRes.data.length} staff members.`);
+        } catch (error) { console.error("[SYNC] Failed to sync staff list:", error); }
 
-        // --- 2. Sync Menu Items ---
+        // 2. Sync Menu Items
         try {
-          console.log("[SYNC] Proactively syncing menu items...");
-          const response = await axios.get('/menu'); 
+          const menuRes = await axios.get('/menu'); 
           await db.menuItems.clear();
-          await db.menuItems.bulkPut(response.data);
-          console.log(`[SYNC] Successfully cached ${response.data.length} menu items.`);
-        } catch (error) {
-          console.error("[SYNC] Failed to sync menu items:", error);
-        }
+          await db.menuItems.bulkPut(menuRes.data);
+          console.log(`[SYNC] Cached ${menuRes.data.length} menu items.`);
+        } catch (error) { console.error("[SYNC] Failed to sync menu items:", error); }
 
-        // --- 3. Sync Pending Orders ---
+        // 3. Sync Pending Orders
         await syncPendingOrders();
       }
     };
 
-    syncAllData();
+    runAllSyncTasks();
 
   }, [isOnline, user, syncPendingOrders]);
 
-  return null; // This component renders no UI
+  return null; // This component renders no UI.
 };
 
 function App() {
