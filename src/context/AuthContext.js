@@ -34,10 +34,19 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('user', JSON.stringify(user));
   };
 
-  const logout = () => {
+   const logout = () => {
+    // 1. Clear the state in React
     setUser(null);
     setToken(null);
+    
+    // 2. Clear the data from localStorage to prevent "stuck tokens"
     localStorage.removeItem('user');
+    localStorage.removeItem('token'); // This was the missing, critical step
+
+    // 3. (Optional but good practice) Clear the header from the running axios instance
+    delete axiosInstance.defaults.headers.common['Authorization'];
+    
+    console.log("User session completely cleared.");
   };
 
   const authContextValue = {
