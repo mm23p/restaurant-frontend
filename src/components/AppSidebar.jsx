@@ -52,6 +52,7 @@ const AppSidebar = () => {
             {/* Manager-specific links */}
             <NavLink to="/manager" end className={linkClasses}><FaChartBar /> Dashboard</NavLink>
             <NavLink to="/admin/menu" className={linkClasses}><FaUtensils /> Menu Management</NavLink>
+            <NavLink to="/admin/orders" className={linkClasses}><FaHistory /> All Order History</NavLink>
             <NavLink to="/admin/reports" className={linkClasses}><FaChartBar /> View Reports</NavLink>
             
             <div className="pt-4 mt-4 border-t border-gray-200">
