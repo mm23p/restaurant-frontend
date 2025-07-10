@@ -1,118 +1,99 @@
+// src/pages/OrderCreation.jsx
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaUtensils, FaTrash, FaPlus, FaMinus, FaPrint, FaWifi, FaCloudUploadAlt, FaSync } from 'react-icons/fa';
+import { FaUtensils, FaTrash, FaPlus, FaMinus, FaPrint, FaWifi, FaCloudUploadAlt } from 'react-icons/fa';
 import axios from '../api/axios';
-import { db, getPendingOrderCount } from '../db'; 
-import { useAuth } from '../context/AuthContext'; 
+import { db } from '../db';
+import { useAuth } from '../context/AuthContext';
 import AppLayout from '../components/AppLayout';
 import AppSidebar from '../components/AppSidebar';
-import { useLiveQuery } from 'dexie-react-hooks';
 import ConfirmationModal from '../components/ConfirmationModal';
 
+// Custom hook to track online/offline status
 const useOnlineStatus = () => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
   return isOnline;
 };
 
 const OrderCreation = () => {
   const navigate = useNavigate();
   const isOnline = useOnlineStatus();
-  const { user, token,  logout } = useAuth(); 
+  const { user, token, logout } = useAuth();
+
+  // Component State
   const [menuItems, setMenuItems] = useState([]);
   const [currentOrder, setCurrentOrder] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [status, setStatus] = useState({ loading: false, error: null, success: false, orderId: null });
+  const [status, setStatus] = useState({ loading: true, error: null, success: false, orderId: null });
   const [syncing, setSyncing] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
-  const pendingOrderCount = useLiveQuery(
-    () => db.pendingOrders.count(),
-    [], // Dependencies array
-    0   // Initial value to show before the query completes
-  );
-
-   const fetchMenuItems = useCallback(async () => {
+  // --- NEW, SIMPLER fetchMenuItems function ---
+  // This function now ONLY loads from the local cache.
+  const fetchMenuItems = useCallback(async () => {
     setStatus(prev => ({ ...prev, loading: true, error: null }));
     try {
-      if (isOnline) {
-        const response = await axios.get('/menu');
-        setMenuItems(response.data);
-        await db.menuItems.clear();
-        await db.menuItems.bulkAdd(response.data);
-      } else {
-        const localItems = await db.menuItems.toArray();
-        setMenuItems(localItems);
-      }
-    } catch (error) {
-      console.error("Menu fetch failed, using fallback.", error);
+      console.log("Loading menu from local cache...");
       const localItems = await db.menuItems.toArray();
+      
+      if (localItems.length === 0) {
+        console.warn("Local menu cache is empty.");
+        setStatus(prev => ({...prev, error: "Menu not downloaded. Please connect to the internet to sync."}));
+      }
+
       setMenuItems(localItems);
+    } catch (error) {
+      console.error("Failed to load menu from local cache:", error);
+      setStatus(prev => ({...prev, error: "Could not load menu data."}));
     } finally {
       setStatus(prev => ({ ...prev, loading: false }));
     }
-  }, [isOnline]);
+  }, []); // This no longer needs `isOnline` as a dependency
 
+  // Function to sync orders created while offline (unchanged)
+  const syncPendingOrders = useCallback(async () => {
+    const pendingOrders = await db.pendingOrders.toArray();
+    if (pendingOrders.length === 0) return;
+    
+    setSyncing(true);
+    console.log(`Syncing ${pendingOrders.length} pending orders...`);
+    
+    for (const order of pendingOrders) {
+        try {
+            await axios.post('/orders', order.data, {
+                headers: { Authorization: `Bearer ${order.token}` }
+            });
+            await db.pendingOrders.delete(order.id);
+            console.log(`Successfully synced offline order #${order.id}`);
+        } catch (error) {
+            console.error(`Failed to sync offline order #${order.id}. Will try again later.`, error);
+        }
+    }
+    setSyncing(false);
+  }, []);
 
-  const handleManualSync = async () => {
-    if (!isOnline) {
-      alert("Please connect to the internet to sync.");
-      return;
-    }
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        await registration.sync.register('sync-pending-orders');
-        alert("Sync requested! The system will now upload pending orders in the background.");
-      } catch (err) {
-        alert("Could not request a sync. Please try again later.");
-      }
-    } else {
-      alert("Background sync is not supported by this browser.");
-    }
-  };
-/* 
-   const syncPendingOrders = useCallback(async (isManual = false) => {
-    if (syncing || !isOnline) return;
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.sync.register('sync-pending-orders');
-      if (isManual) alert("Sync requested! It will run in the background.");
-    } else {
-      if (isManual) alert("Background sync is not supported on this browser.");
-    }
-  }, [syncing, isOnline]); */
-
-  // Main effect hook to fetch data and sync when online status changes
- /*  useEffect(() => {
+  // --- Main effect hook ---
+  // Now simpler: it fetches the local menu and syncs orders if online.
+  useEffect(() => {
     fetchMenuItems();
     if (isOnline) {
         syncPendingOrders();
     }
-  }, [fetchMenuItems, isOnline, syncPendingOrders]); */
+  }, [fetchMenuItems, isOnline, syncPendingOrders]);
 
-    useEffect(() => {
-    fetchMenuItems();
-    // No automatic sync on load; let the service worker handle it.
-  }, [fetchMenuItems]);
-
-
-
-  // --- Core Business Logic ---
+  // --- Core Business Logic (unchanged) ---
   const handleAddItem = (item) => {
     setCurrentOrder(prev => {
       const exists = prev.find(i => i.menu_item_id === item.id);
@@ -130,66 +111,45 @@ const OrderCreation = () => {
     );
   };
 
-    // <-- 4. MODIFY THE handlePlaceOrder FUNCTION ---
   const handlePlaceOrder = () => {
     if (currentOrder.length === 0) return;
-
     if (user.role === 'waiter') {
-      setIsConfirmModalOpen(true); // For waiters, show the modal first.
+      setIsConfirmModalOpen(true);
     } else {
-      handleConfirmOrder(); // For Admin/Manager, place the order directly.
+      handleConfirmOrder();
     }
   };
-  
-    const handleConfirmOrder = async () => {
+
+  const handleConfirmOrder = async () => {
     setIsConfirmModalOpen(false);
     if (currentOrder.length === 0 || !user) {
-      alert("Please add items to the order.");
+      alert("Please add items to the order and ensure you are logged in.");
       return;
     }
-    const orderData = { items: currentOrder.map(i => ({ menu_item_id: i.menu_item_id, quantity: i.quantity, price: i.price })) };
+    const orderData = {
+      items: currentOrder.map(i => ({ menu_item_id: i.menu_item_id, quantity: i.quantity, price: i.price }))
+    };
     setStatus({ loading: true, error: null, success: false, orderId: null });
-
     try {
       let response;
       if (isOnline) {
         response = await axios.post('/orders', orderData);
-        if (user.role === 'waiter') {
-          logout();
-          navigate('/login');
-        } else {
-          setStatus({ loading: false, error: null, success: true, orderId: response.data.orderId });
-          setCurrentOrder([]);
-        }
       } else {
         await db.pendingOrders.add({ createdAt: new Date(), token: token, data: orderData });
-        
-        if ('serviceWorker' in navigator && 'SyncManager' in window) {
-          navigator.serviceWorker.ready.then(registration => {
-            return registration.sync.register('sync-pending-orders');
-          }).catch(err => console.error('Sync registration failed:', err));
-        } else {
-          alert('Order saved locally. Please connect to the internet to sync.');
-        }
-
-        if (user.role === 'waiter') {
-          logout();
-          navigate('/login');
-        }
+        response = { data: { orderId: 'local' } };
+      }
+      if (user.role === 'waiter') {
+        logout();
+        navigate('/login');
+      } else {
+        setStatus({ loading: false, error: null, success: true, orderId: response.data.orderId });
+        setCurrentOrder([]);
       }
     } catch (error) {
       const errorMessage = isOnline ? (error.response?.data?.error || 'Failed to place order.') : "Failed to save order locally.";
       setStatus({ loading: false, error: errorMessage, success: false, orderId: null });
     }
   };
-
-  
-  // <-- 6. NEW: A function to handle the confirmation from the modal ---
-  const handleConfirmLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
 
   const handleClearOrder = () => {
     setCurrentOrder([]);
@@ -204,9 +164,7 @@ const OrderCreation = () => {
     }
   };
 
-  
-
-  // --- Memoized Calculations for UI ---
+  // --- Memoized Calculations for UI (unchanged) ---
   const categories = useMemo(() => ['All', ...new Set(menuItems.map(item => item.category))], [menuItems]);
   const filteredMenuItems = useMemo(() => {
     return menuItems
@@ -217,8 +175,7 @@ const OrderCreation = () => {
   const tax = subtotal * 0.08;
   const total = subtotal + tax;
 
-
-   return (
+return (
     <AppLayout sidebar={<AppSidebar />}>
       <ConfirmationModal
         isOpen={isConfirmModalOpen}
@@ -235,22 +192,17 @@ const OrderCreation = () => {
       </ConfirmationModal>
 
       <div className="flex flex-col h-full bg-gray-100">
-         <div className="p-2 bg-gray-800 text-white text-center text-sm flex items-center justify-center flex-wrap gap-x-6 gap-y-1 shrink-0">
-          {isOnline ? (<span className="flex items-center gap-2 text-green-400 font-semibold"><FaWifi /> Online</span>) : (<span className="flex items-center gap-2 text-yellow-400 font-semibold"><FaWifi /> OFFLINE MODE</span>)}
-          {pendingOrderCount > 0 && (<span className="flex items-center gap-2 text-blue-400 font-semibold"><FaCloudUploadAlt /> {pendingOrderCount} Order(s) waiting to sync</span>)}
-          
-          {/* --- THIS IS THE CORRECTED LINE --- */}
-          {isOnline && pendingOrderCount > 0 && (
-             <button onClick={handleManualSync} disabled={syncing} className="flex items-center gap-2 text-white bg-blue-500 hover:bg-blue-600 px-3 py-1 rounded-md text-xs font-bold disabled:bg-gray-500 disabled:cursor-wait">
-              <FaSync className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Requesting...' : 'Sync Now'}
-            </button>
-          )}
+        
+        <div className="p-2 bg-gray-800 text-white text-center text-sm flex items-center justify-center gap-4 shrink-0">
+            {isOnline ? ( <span className="flex items-center gap-2 text-green-400"><FaWifi /> Online</span> ) : ( <span className="flex items-center gap-2 text-yellow-400"><FaWifi /> OFFLINE MODE</span> )}
+            {syncing && <span className="flex items-center gap-2 text-blue-400"><FaCloudUploadAlt className="animate-pulse"/> Syncing...</span>}
         </div>
+
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 overflow-hidden">
+          
           <div className="lg:col-span-2 bg-white rounded-lg shadow-md flex flex-col overflow-hidden">
             <div className="p-4 border-b border-gray-200 shrink-0">
-              <input type="text" placeholder="Search menu items..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" />
+              <input type="text" placeholder="Search menu items..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md"/>
             </div>
             <div className="px-4 py-2 border-b border-gray-200 flex gap-2 overflow-x-auto whitespace-nowrap shrink-0">
               {categories.map(category => (
@@ -264,37 +216,67 @@ const OrderCreation = () => {
                 {filteredMenuItems.map(item => {
                   const isItemDisabled = !item.is_available || (item.track_quantity && item.quantity <= 0);
                   return (
-                    <div key={item.id} onClick={() => !isItemDisabled && handleAddItem(item)} className={`flex flex-col border rounded-lg shadow-sm transition duration-200 ${isItemDisabled ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-white cursor-pointer hover:shadow-lg hover:border-indigo-500'}`}>
-                      <div className="p-4 flex-grow"><p className="font-semibold text-gray-800 break-words" title={item.name}>{item.name}</p><p className="text-sm text-gray-500 mt-1">{parseFloat(item.price).toFixed(2)}</p></div>
-                      {isItemDisabled && (<div className="p-2 border-t border-red-200 bg-red-50 w-full rounded-b-lg mt-auto"><p className="text-red-600 text-xs font-bold text-center uppercase">{item.track_quantity && item.quantity <= 0 ? 'Out of Stock' : 'Unavailable'}</p></div>)}
+                    <div
+                      key={item.id}
+                      onClick={() => !isItemDisabled && handleAddItem(item)}
+                      className={`flex flex-col border rounded-lg shadow-sm transition duration-200 ${isItemDisabled ? 'bg-gray-100 opacity-70 cursor-not-allowed' : 'bg-white cursor-pointer hover:shadow-lg hover:border-indigo-500'}`}
+                    >
+                      <div className="p-4 flex-grow">
+                        <p className="font-semibold text-gray-800 break-words" title={item.name}>{item.name}</p>
+                        <p className="text-sm text-gray-500 mt-1">{parseFloat(item.price).toFixed(2)}</p>
+                      </div>
+                      {isItemDisabled && (
+                        <div className="p-2 border-t border-red-200 bg-red-50 w-full rounded-b-lg mt-auto">
+                          <p className="text-red-600 text-xs font-bold text-center uppercase">
+                            {item.track_quantity && item.quantity <= 0 ? 'Out of Stock' : 'Unavailable'}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </div>
           </div>
+
           <div className="bg-white rounded-lg shadow-md flex flex-col overflow-hidden">
             <h2 className="text-xl font-bold text-gray-800 p-4 border-b border-gray-200 shrink-0">Current Order</h2>
             <div className="flex-1 overflow-y-auto p-4">
               {currentOrder.length === 0 ? (
-                <div className="text-center text-gray-500 mt-10 flex flex-col items-center"><FaUtensils size={40} className="mb-2 text-gray-300" /><p>No items in order yet.</p></div>
+                <div className="text-center text-gray-500 mt-10 flex flex-col items-center">
+                  <FaUtensils size={40} className="mb-2 text-gray-300" />
+                  <p>No items in order yet.</p>
+                </div>
               ) : (
                 <ul className="space-y-3">
                   {currentOrder.map(item => (
                     <li key={item.menu_item_id} className="flex justify-between items-center bg-gray-50 p-3 rounded-md shadow-sm">
-                      <div><p className="font-semibold">{item.name}</p><p className="text-sm text-gray-600">{item.price.toFixed(2)}</p></div>
-                      <div className="flex items-center gap-2"><button onClick={() => handleUpdateQuantity(item.menu_item_id, -1)} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"><FaMinus size={10} /></button><span className="font-bold w-6 text-center">{item.quantity}</span><button onClick={() => handleUpdateQuantity(item.menu_item_id, 1)} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"><FaPlus size={10} /></button></div>
+                      <div>
+                        <p className="font-semibold">{item.name}</p>
+                        <p className="text-sm text-gray-600">{item.price.toFixed(2)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleUpdateQuantity(item.menu_item_id, -1)} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"><FaMinus size={10} /></button>
+                        <span className="font-bold w-6 text-center">{item.quantity}</span>
+                        <button onClick={() => handleUpdateQuantity(item.menu_item_id, 1)} className="p-2 rounded-full bg-gray-200 hover:bg-gray-300"><FaPlus size={10} /></button>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
             </div>
             <div className="border-t border-gray-200 p-4 space-y-3 shrink-0">
-              <div className="text-sm text-gray-700 space-y-1"><div className="flex justify-between"><span>Subtotal:</span><span>{subtotal.toFixed(2)}</span></div><div className="flex justify-between"><span>Tax (8%):</span><span>{tax.toFixed(2)}</span></div><div className="flex justify-between font-bold text-lg"><span>Total:</span><span>{total.toFixed(2)}</span></div></div>
-              <button onClick={handlePlaceOrder} disabled={status.loading || currentOrder.length === 0} className="w-full bg-indigo-600 text-white py-3 text-lg font-semibold rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed transition">
+              <div className="text-sm text-gray-700 space-y-1">
+                <div className="flex justify-between"><span>Subtotal:</span><span>{subtotal.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span>Tax (8%):</span><span>{tax.toFixed(2)}</span></div>
+                <div className="flex justify-between font-bold text-lg"><span>Total:</span><span>{total.toFixed(2)}</span></div>
+              </div>
+              <button onClick={handlePlaceOrder} disabled={status.loading || status.success || currentOrder.length === 0} className="w-full bg-indigo-600 text-white py-3 text-lg font-semibold rounded-md hover:bg-indigo-700 disabled:bg-indigo-300 disabled:cursor-not-allowed transition">
                 {status.loading ? 'Placing...' : 'Place Order'}
               </button>
-              <button onClick={handleClearOrder} className="w-full bg-red-500 text-white py-2 rounded-md hover:bg-red-600 flex items-center justify-center gap-2"><FaTrash /> Clear Order</button>
+              <button onClick={handleClearOrder} className="w-full bg-red-500 text-white py-2 rounded-md hover:bg-red-600 flex items-center justify-center gap-2">
+                <FaTrash /> Clear Order
+              </button>
               <button onClick={handlePrintOrder} disabled={!status.success || !status.orderId || status.orderId === 'local'} className="w-full bg-gray-700 text-white py-2 rounded-md hover:bg-gray-800 flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed">
                 <FaPrint /> Print Order
               </button>

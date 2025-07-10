@@ -23,6 +23,7 @@ import ApprovalQueue from './pages/ApprovalQueue'; // The new page for admins
 // --- Import THE CORRECT Component for protecting routes ---
 import ProtectedRoute from './components/ProtectedRoute';
 
+
 const AppSync = () => {
   const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -41,27 +42,45 @@ const AppSync = () => {
   }, []);
 
   useEffect(() => {
+    // This function will sync the staff list.
     const syncStaffList = async () => {
-      // Only sync if we are online and a user is logged in
       if (isOnline && user) {
-        console.log("Proactively syncing staff list to local DB...");
+        console.log("Proactively syncing staff list...");
         try {
           const response = await axios.get('/users/staff');
-          const staffList = response.data;
-          // bulkPut is perfect: it adds new users and updates existing ones.
-          await db.users.bulkPut(staffList);
-          console.log(`Successfully cached ${staffList.length} staff members.`);
+          await db.users.bulkPut(response.data);
+          console.log(`Successfully cached ${response.data.length} staff members.`);
         } catch (error) {
           console.error("Failed to sync staff list:", error);
         }
       }
     };
 
-    syncStaffList();
-  }, [isOnline, user]); // Rerun this effect when online status or user changes
+    // --- NEW FUNCTION TO SYNC THE MENU ---
+    const syncMenuItems = async () => {
+      if (isOnline && user) {
+        console.log("Proactively syncing menu items...");
+        try {
+          // We fetch from the generic /menu endpoint. The backend will provide
+          // the correct list based on the user's role.
+          const response = await axios.get('/menu'); 
+          // Clear the old menu and add the fresh one.
+          await db.menuItems.clear();
+          await db.menuItems.bulkPut(response.data);
+          console.log(`Successfully cached ${response.data.length} menu items.`);
+        } catch (error) {
+          console.error("Failed to sync menu items:", error);
+        }
+      }
+    };
 
-  // This component doesn't render anything, it just handles logic.
-  return null; 
+    // Run both sync functions when the app goes online or the user logs in.
+    syncStaffList();
+    syncMenuItems(); 
+
+  }, [isOnline, user]);
+
+  return null;
 };
 
 function App() {
