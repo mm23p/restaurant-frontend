@@ -43,7 +43,9 @@ const Login = () => {
         try {
           // Fetch all users we have saved locally for the offline screen
           const users = await db.users.toArray();
-          setCachedUsers(users.filter(u => u.role === 'waiter')); // Only show waiters for offline login
+          //setCachedUsers(users.filter(u => u.role === 'waiter')); // Only show waiters for offline login
+          const activeStaff = users.filter(u => (u.role === 'waiter' || u.role === 'manager') && u.is_active);
+          setCachedUsers(activeStaff);
         } catch (dbError) {
           console.error("Failed to load users from local database:", dbError);
           setError("Could not load offline profiles.");

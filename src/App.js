@@ -1,8 +1,10 @@
 // src/App.js
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import axios from './api/axios'; 
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { db } from './db';
 
 // --- Import Pages ---
 import Login from './pages/Login';
@@ -21,9 +23,51 @@ import ApprovalQueue from './pages/ApprovalQueue'; // The new page for admins
 // --- Import THE CORRECT Component for protecting routes ---
 import ProtectedRoute from './components/ProtectedRoute';
 
+const AppSync = () => {
+  const { user } = useAuth();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const syncStaffList = async () => {
+      // Only sync if we are online and a user is logged in
+      if (isOnline && user) {
+        console.log("Proactively syncing staff list to local DB...");
+        try {
+          const response = await axios.get('/users/staff');
+          const staffList = response.data;
+          // bulkPut is perfect: it adds new users and updates existing ones.
+          await db.users.bulkPut(staffList);
+          console.log(`Successfully cached ${staffList.length} staff members.`);
+        } catch (error) {
+          console.error("Failed to sync staff list:", error);
+        }
+      }
+    };
+
+    syncStaffList();
+  }, [isOnline, user]); // Rerun this effect when online status or user changes
+
+  // This component doesn't render anything, it just handles logic.
+  return null; 
+};
+
 function App() {
   return (
     <AuthProvider>
+      <AppSync />
       <Router>
         <Routes>
           {/* =================================================================
