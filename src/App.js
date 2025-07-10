@@ -1,6 +1,6 @@
 // src/App.js
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from './api/axios'; 
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -31,56 +31,75 @@ const AppSync = () => {
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
 
+  // --- THIS IS THE ORDER SYNC LOGIC, MOVED FROM OrderCreation.jsx ---
+  const syncPendingOrders = useCallback(async () => {
+    const pendingOrders = await db.pendingOrders.toArray();
+    if (pendingOrders.length === 0) {
+      console.log("No pending orders to sync.");
+      return;
+    }
+    
+    console.log(`[SYNC] Found ${pendingOrders.length} pending orders. Attempting to sync...`);
+    
+    for (const order of pendingOrders) {
+      try {
+        // Use the specific token stored with the offline order for authentication
+        await axios.post('/orders', order.data, {
+          headers: { Authorization: `Bearer ${order.token}` }
+        });
+        await db.pendingOrders.delete(order.id); // Remove from queue on success
+        console.log(`[SYNC] Successfully synced offline order #${order.id}`);
+      } catch (error) {
+        console.error(`[SYNC] Failed to sync offline order #${order.id}. Will try again later.`, error);
+      }
+    }
+    console.log("[SYNC] Sync process finished.");
+  }, []);
+
   useEffect(() => {
-    // This function will sync the staff list.
-    const syncStaffList = async () => {
+    const syncAllData = async () => {
       if (isOnline && user) {
-        console.log("Proactively syncing staff list...");
+        console.log("App is online with a logged-in user. Running all sync tasks.");
+        
+        // --- 1. Sync Staff List ---
         try {
+          console.log("[SYNC] Proactively syncing staff list...");
           const response = await axios.get('/users/staff');
           await db.users.bulkPut(response.data);
-          console.log(`Successfully cached ${response.data.length} staff members.`);
+          console.log(`[SYNC] Successfully cached ${response.data.length} staff members.`);
         } catch (error) {
-          console.error("Failed to sync staff list:", error);
+          console.error("[SYNC] Failed to sync staff list:", error);
         }
-      }
-    };
 
-    // --- NEW FUNCTION TO SYNC THE MENU ---
-    const syncMenuItems = async () => {
-      if (isOnline && user) {
-        console.log("Proactively syncing menu items...");
+        // --- 2. Sync Menu Items ---
         try {
-          // We fetch from the generic /menu endpoint. The backend will provide
-          // the correct list based on the user's role.
+          console.log("[SYNC] Proactively syncing menu items...");
           const response = await axios.get('/menu'); 
-          // Clear the old menu and add the fresh one.
           await db.menuItems.clear();
           await db.menuItems.bulkPut(response.data);
-          console.log(`Successfully cached ${response.data.length} menu items.`);
+          console.log(`[SYNC] Successfully cached ${response.data.length} menu items.`);
         } catch (error) {
-          console.error("Failed to sync menu items:", error);
+          console.error("[SYNC] Failed to sync menu items:", error);
         }
+
+        // --- 3. Sync Pending Orders ---
+        await syncPendingOrders();
       }
     };
 
-    // Run both sync functions when the app goes online or the user logs in.
-    syncStaffList();
-    syncMenuItems(); 
+    syncAllData();
 
-  }, [isOnline, user]);
+  }, [isOnline, user, syncPendingOrders]);
 
-  return null;
+  return null; // This component renders no UI
 };
 
 function App() {

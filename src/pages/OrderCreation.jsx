@@ -37,7 +37,7 @@ const OrderCreation = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [status, setStatus] = useState({ loading: true, error: null, success: false, orderId: null });
-  const [syncing, setSyncing] = useState(false);
+  //const [syncing, setSyncing] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   // --- NEW, SIMPLER fetchMenuItems function ---
@@ -63,7 +63,7 @@ const OrderCreation = () => {
   }, []); // This no longer needs `isOnline` as a dependency
 
   // Function to sync orders created while offline (unchanged)
-  const syncPendingOrders = useCallback(async () => {
+  /* const syncPendingOrders = useCallback(async () => {
     const pendingOrders = await db.pendingOrders.toArray();
     if (pendingOrders.length === 0) return;
     
@@ -82,16 +82,13 @@ const OrderCreation = () => {
         }
     }
     setSyncing(false);
-  }, []);
+  }, []); */
 
   // --- Main effect hook ---
   // Now simpler: it fetches the local menu and syncs orders if online.
   useEffect(() => {
     fetchMenuItems();
-    if (isOnline) {
-        syncPendingOrders();
-    }
-  }, [fetchMenuItems, isOnline, syncPendingOrders]);
+  }, [fetchMenuItems]);
 
   // --- Core Business Logic (unchanged) ---
   const handleAddItem = (item) => {
@@ -194,8 +191,8 @@ return (
       <div className="flex flex-col h-full bg-gray-100">
         
         <div className="p-2 bg-gray-800 text-white text-center text-sm flex items-center justify-center gap-4 shrink-0">
-            {isOnline ? ( <span className="flex items-center gap-2 text-green-400"><FaWifi /> Online</span> ) : ( <span className="flex items-center gap-2 text-yellow-400"><FaWifi /> OFFLINE MODE</span> )}
-            {syncing && <span className="flex items-center gap-2 text-blue-400"><FaCloudUploadAlt className="animate-pulse"/> Syncing...</span>}
+          {isOnline ? ( <span className="flex items-center gap-2 text-green-400"><FaWifi /> Online</span> ) : ( <span className="flex items-center gap-2 text-yellow-400"><FaWifi /> OFFLINE MODE</span> )}
+          {/* The 'syncing' indicator is removed from here. It could be moved to a global header if desired. */}
         </div>
 
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 p-4 overflow-hidden">
