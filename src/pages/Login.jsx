@@ -108,10 +108,15 @@ const Login = () => {
 
 
   
+// In src/pages/Login.jsx
+
 const handleOfflineLogin = (user) => {
-    // For offline login, we "log in" the user with their cached data.
-    // This allows them to access the app and create orders locally.
-    console.log(`Unlocking session for offline user: ${user.username}`);
+    // --- DEBUG LOG 1: What are we logging in with? ---
+    console.log(
+      `[LOGIN_PAGE] Unlocking OFFLINE session for: ${user.full_name} (ID: ${user.id}). Token being used:`, 
+      user.last_known_token
+    );
+    
     login({
         user: {
             id: user.id,
@@ -122,10 +127,8 @@ const handleOfflineLogin = (user) => {
         token: user.last_known_token // Use the last good token we have for them
     });
 
-    // Waiters always go to the new order page
-    //navigate('/orders');
     navigate('/order/create');
-  };
+};
 
   // --- Render different UI based on online status ---
   if (isOnline) {

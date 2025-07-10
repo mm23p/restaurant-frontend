@@ -31,6 +31,13 @@ const OrderCreation = () => {
   const isOnline = useOnlineStatus();
   const { user, token, logout } = useAuth();
 
+   useEffect(() => {
+    console.log(
+      `[ORDER_PAGE] Component loaded or user changed. Current auth state:`,
+      { user: user?.full_name, role: user?.role, token: token }
+    );
+  }, [user, token]);
+
   // Component State
   const [menuItems, setMenuItems] = useState([]);
   const [currentOrder, setCurrentOrder] = useState([]);
@@ -116,6 +123,10 @@ const OrderCreation = () => {
       } else {
         console.log(`OrderCreation: Saving order locally for user ${user.id} with token...`);
         // When offline, save the order locally with the current user's token.
+        console.log(
+          `[ORDER_PAGE] Saving OFFLINE order for user: ${user.full_name}. Stamping with token:`,
+          token
+        );
         await db.pendingOrders.add({ createdAt: new Date(), token: token, data: orderData });
         response = { data: { orderId: 'local' } };
       }
