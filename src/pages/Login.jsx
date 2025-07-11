@@ -112,10 +112,8 @@ const Login = () => {
 
 const handleOfflineLogin = (user) => {
     // --- DEBUG LOG 1: What are we logging in with? ---
-    console.log(
-      `[LOGIN_PAGE] Unlocking OFFLINE session for: ${user.full_name} (ID: ${user.id}). Token being used:`, 
-      user.last_known_token
-    );
+   console.log(`Unlocking session for offline user: ${user.username}`);
+
     
     login({
         user: {
@@ -127,7 +125,8 @@ const handleOfflineLogin = (user) => {
         token: user.last_known_token // Use the last good token we have for them
     });
 
-    navigate('/order/create');
+    //navigate('/order/create');
+      navigate('/order/create', { state: { sessionUser: user } });
 };
 
   // --- Render different UI based on online status ---

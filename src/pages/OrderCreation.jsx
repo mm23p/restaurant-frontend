@@ -1,7 +1,7 @@
 // src/pages/OrderCreation.jsx
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { FaUtensils, FaTrash, FaPlus, FaMinus, FaPrint, FaWifi } from 'react-icons/fa';
 import axios from '../api/axios';
 import { db } from '../db';
@@ -25,56 +25,43 @@ const useOnlineStatus = () => {
   }, []);
   return isOnline;
 };
-
 const OrderCreation = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // <-- Get the location object from react-router
   const isOnline = useOnlineStatus();
-  const { user, token, logout } = useAuth();
+  const { user, logout } = useAuth(); // Global user from context
 
-   useEffect(() => {
-    console.log(
-      `[ORDER_PAGE] Component loaded or user changed. Current auth state:`,
-      { user: user?.full_name, role: user?.role, token: token }
-    );
-  }, [user, token]);
+  // --- NEW: The "Session User" logic ---
+  // Prioritize the user passed directly from the offline login screen.
+  // Fall back to the globally authenticated user if not present (for admins/online managers).
+  const activeUserForSession = location.state?.sessionUser || user;
 
   // Component State
   const [menuItems, setMenuItems] = useState([]);
   const [currentOrder, setCurrentOrder] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [status, setStatus] = useState({ loading: true, error: null, success: false, orderId: null });
+  const [status, setStatus] = useState({ loading: true, error: null });
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
-  // This function now only loads the menu from the local Dexie cache.
-  // The global AppSync component is responsible for keeping the cache updated.
   const fetchMenuItems = useCallback(async () => {
-    setStatus(prev => ({ ...prev, loading: true, error: null }));
+    setStatus({ loading: true, error: null });
     try {
-      console.log("OrderCreation: Loading menu from local cache...");
       const localItems = await db.menuItems.toArray();
-      
       if (localItems.length === 0 && !isOnline) {
-        setStatus(prev => ({...prev, loading: false, error: "Menu not available. Please connect to internet to sync."}));
+        setStatus({ loading: false, error: "Menu not available. Please connect to internet to sync." });
       } else {
         setMenuItems(localItems);
-        setStatus(prev => ({ ...prev, loading: false }));
+        setStatus({ loading: false, error: null });
       }
     } catch (error) {
-      console.error("OrderCreation: Failed to load menu from local cache:", error);
-      setStatus(prev => ({...prev, loading: false, error: "Could not load menu data."}));
+      setStatus({ loading: false, error: "Could not load menu." });
     }
   }, [isOnline]);
 
-  // This effect fetches the local menu when the component mounts or online status changes.
   useEffect(() => {
     fetchMenuItems();
   }, [fetchMenuItems]);
-
-
-  // The `syncPendingOrders` function has been removed from this file.
-  // It is now handled globally by the AppSync component in App.js.
-
 
   const handleAddItem = (item) => {
     setCurrentOrder(prev => {
@@ -94,7 +81,7 @@ const OrderCreation = () => {
   };
 
   const handlePlaceOrder = () => {
-    if (currentOrder.length === 0) return;
+    if (currentOrder.length === 0 || !activeUserForSession) return;
     // For waiters, always show the confirmation modal which leads to logout.
     if (user && user.role === 'waiter') {
       setIsConfirmModalOpen(true);
@@ -103,53 +90,58 @@ const OrderCreation = () => {
       handleConfirmOrder();
     }
   };
-
-  const handleConfirmOrder = async () => {
+   const handleConfirmOrder = async () => {
     setIsConfirmModalOpen(false);
-    if (currentOrder.length === 0 || !user) {
-      alert("Please add items to the order and ensure you are logged in.");
+    if (currentOrder.length === 0 || !activeUserForSession) {
+      alert("User session not found. Please log in again.");
       return;
     }
+    
     const orderData = {
       items: currentOrder.map(i => ({ menu_item_id: i.menu_item_id, quantity: i.quantity, price: i.price }))
     };
-    setStatus({ loading: true, error: null, success: false, orderId: null });
     
+    // Temporarily disable buttons while processing
+    setStatus(prev => ({...prev, loading: true}));
+
     try {
-      let response;
+      let orderId;
       if (isOnline) {
-        console.log("OrderCreation: Placing order online...");
-        response = await axios.post('/orders', orderData);
+        const response = await axios.post('/orders', orderData);
+        orderId = response.data.orderId;
       } else {
-        console.log(`OrderCreation: Saving order locally for user ${user.id} with token...`);
-        // When offline, save the order locally with the current user's token.
-        console.log(
-          `[ORDER_PAGE] Saving OFFLINE order for user: ${user.full_name}. Stamping with token:`,
-          token
-        );
-        await db.pendingOrders.add({ createdAt: new Date(), token: token, data: orderData });
-        response = { data: { orderId: 'local' } };
+        // --- THE FIX ---
+        // We now use the token from the user who explicitly unlocked this session.
+        console.log(`Stamping OFFLINE order with token from user: ${activeUserForSession.username}`);
+        await db.pendingOrders.add({ 
+          createdAt: new Date(), 
+          token: activeUserForSession.last_known_token,
+          data: orderData 
+        });
+        orderId = 'local';
       }
 
-      // Role-based action after successful order placement
-      if (user.role === 'waiter') {
-        alert('Order placed successfully! Ending shift.');
+      if (activeUserForSession.role === 'waiter') {
+        alert('Order placed successfully! Ending your shift.');
         logout();
         navigate('/login');
       } else {
-        // For Admin/Manager, just reset the form and show success
-        setStatus({ loading: false, error: null, success: true, orderId: response.data.orderId });
+        // For Admin/Manager, just reset the form
+        alert('Order placed successfully!');
         setCurrentOrder([]);
+        setStatus({ loading: false, error: null });
+        // Optionally navigate to the receipt page
+        // if (orderId !== 'local') navigate(`/receipt/${orderId}`);
       }
     } catch (error) {
       const errorMessage = isOnline ? (error.response?.data?.error || 'Failed to place order.') : "Failed to save order locally.";
-      setStatus({ loading: false, error: errorMessage, success: false, orderId: null });
+      alert(errorMessage); // Use alert for critical errors
+      setStatus({ loading: false, error: errorMessage });
     }
   };
 
-  const handleClearOrder = () => {
+    const handleClearOrder = () => {
     setCurrentOrder([]);
-    setStatus({ loading: false, error: null, success: false, orderId: null });
   };
 
   const handlePrintOrder = () => {
