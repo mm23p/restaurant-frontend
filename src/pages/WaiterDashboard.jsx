@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo,  useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
-import WaiterSidebar from '../components/WaiterSidebar';
 import { FaUtensils, FaTrash, FaPlus, FaMinus , FaWifi, FaCloudUploadAlt} from 'react-icons/fa';
 import axios from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -25,143 +24,158 @@ const useOnlineStatus = () => {
   }, []);
   return isOnline;
 };
-
 const WaiterDashboard = () => {
-  const navigate = useNavigate();
-  const { user, token, logout } = useAuth();
-  const isOnline = useOnlineStatus();
+    const navigate = useNavigate();
+    const { user, logout } = useAuth(); // We only need the user object, not the token for offline saving
+    const isOnline = useOnlineStatus();
 
-  // --- State Management ---
-  const [menuItems, setMenuItems] = useState([]);
-  const [currentOrder, setCurrentOrder] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [status, setStatus] = useState({ loading: false, error: null });
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+    const [menuItems, setMenuItems] = useState([]);
+    const [currentOrder, setCurrentOrder] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('All');
+    const [status, setStatus] = useState({ loading: false, error: null });
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [syncing, setSyncing] = useState(false);
 
-  // --- Data Fetching and Syncing Logic ---
-  const fetchMenuItems = useCallback(async () => {
-    if (isOnline) {
-      try {
-        const response = await axios.get('/menu');
-        const availableItems = response.data.filter(item => item.is_available);
-        await db.menuItems.clear();
-        await db.menuItems.bulkAdd(availableItems);
-        setMenuItems(availableItems);
-      } catch (error) {
-        console.error("Server fetch failed, falling back to local DB...", error);
-        const localItems = await db.menuItems.toArray();
-        setMenuItems(localItems);
-      }
-    } else {
-      console.log("OFFLINE: Fetching menu from local database...");
-      const localItems = await db.menuItems.toArray();
-      setMenuItems(localItems);
-    }
-  }, [isOnline]);
+    const fetchMenuItems = useCallback(async () => {
+        if (isOnline) {
+            try {
+                const response = await axios.get('/menu');
+                const availableItems = response.data.filter(item => item.is_available);
+                await db.menuItems.clear();
+                await db.menuItems.bulkAdd(availableItems);
+                setMenuItems(availableItems);
+            } catch (error) {
+                console.error("Server fetch failed, falling back to local DB...", error);
+                const localItems = await db.menuItems.toArray();
+                setMenuItems(localItems);
+            }
+        } else {
+            console.log("OFFLINE: Fetching menu from local database...");
+            const localItems = await db.menuItems.toArray();
+            setMenuItems(localItems);
+        }
+    }, [isOnline]);
 
-  const syncPendingOrders = useCallback(async () => {
-    const pendingOrders = await db.pendingOrders.toArray();
-    if (pendingOrders.length === 0) return;
-    
-    setSyncing(true);
-    for (const order of pendingOrders) {
-      try {
-        await axios.post('/orders', order.data, {
-          headers: { Authorization: `Bearer ${order.token}` }
+    // --- CHANGE 1: `syncPendingOrders` is now more robust ---
+    const syncPendingOrders = useCallback(async () => {
+        const pendingOrders = await db.pendingOrders.toArray();
+        if (pendingOrders.length === 0) return;
+
+        setSyncing(true);
+        let successCount = 0;
+
+        for (const order of pendingOrders) {
+            try {
+                // The backend will get the user from `order.data.userId`.
+                // The current user's token is used just to authorize the API call.
+                const response = await axios.post('/orders', {
+                    ...order.data,
+                    offlineId: order.id // Pass the Dexie ID for confirmation
+                });
+
+                if (response.status === 201) {
+                    // On success, delete the order from the local DB
+                    await db.pendingOrders.delete(order.id);
+                    console.log(`Successfully synced offline order #${order.id}`);
+                    successCount++;
+                }
+            } catch (error) {
+                console.error(`Failed to sync offline order #${order.id}.`, error.response?.data?.error || error.message);
+            }
+        }
+        setSyncing(false);
+        if (successCount > 0) {
+            alert(`${successCount} offline order(s) synced successfully!`);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchMenuItems();
+        if (isOnline) {
+            syncPendingOrders();
+        }
+    }, [fetchMenuItems, isOnline, syncPendingOrders]);
+
+    const handleAddItem = (item) => {
+        setCurrentOrder(prev => {
+            const exists = prev.find(i => i.menu_item_id === item.id);
+            if (exists) {
+                return prev.map(i => i.menu_item_id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
+            }
+            return [...prev, { menu_item_id: item.id, name: item.name, price: parseFloat(item.price), quantity: 1 }];
         });
-        await db.pendingOrders.delete(order.id);
-        console.log(`Successfully synced offline order #${order.id}`);
-      } catch (error) {
-        console.error(`Failed to sync offline order #${order.id}.`, error);
-      }
-    }
-    setSyncing(false);
-  }, []);
-
-  useEffect(() => {
-    fetchMenuItems();
-    if (isOnline) {
-      syncPendingOrders();
-    }
-  }, [fetchMenuItems, isOnline, syncPendingOrders]);
-
-  // --- Order Management Logic ---
-  const handleAddItem = (item) => {
-    setCurrentOrder(prev => {
-      const exists = prev.find(i => i.menu_item_id === item.id);
-      if (exists) {
-        return prev.map(i => i.menu_item_id === item.id ? { ...i, quantity: i.quantity + 1 } : i);
-      }
-      return [...prev, { menu_item_id: item.id, name: item.name, price: parseFloat(item.price), quantity: 1 }];
-    });
-  };
-
-  const handleUpdateQuantity = (id, amount) => {
-    setCurrentOrder(prev =>
-      prev.map(item => item.menu_item_id === id ? { ...item, quantity: Math.max(0, item.quantity + amount) } : item)
-          .filter(item => item.quantity > 0)
-    );
-  };
-  
-  const handleClearOrder = () => setCurrentOrder([]);
-
-  const handleConfirmOrder = async () => {
-    if (currentOrder.length === 0) {
-      setIsModalOpen(false);
-      return;
-    }
-    setStatus({ loading: true, error: null });
-
-    const orderData = {
-      items: currentOrder.map(i => ({
-        menu_item_id: i.menu_item_id,
-        quantity: i.quantity,
-        price: i.price,
-      })),
     };
 
-    if (isOnline) {
-      try {
-        await axios.post('/orders', orderData);
-        alert('Order placed successfully! You will now be logged out.');
-        logout();
-        navigate('/login');
-      } catch (error) {
-        const msg = error.response?.data?.error || 'Failed to place order.';
-        setStatus({ loading: false, error: msg });
-        setIsModalOpen(false);
-      }
-    } else { // OFFLINE
-      try {
-        await db.pendingOrders.add({
-          createdAt: new Date(),
-          token: token,
-          data: orderData
-        });
-        alert('You are offline. Order saved locally and will sync later. You will now be logged out.');
-        logout();
-        navigate('/login');
-      } catch (error) {
-        setStatus({ loading: false, error: 'Failed to save order locally.' });
-        setIsModalOpen(false);
-      }
-    }
-  };
+    const handleUpdateQuantity = (id, amount) => {
+        setCurrentOrder(prev =>
+            prev.map(item => item.menu_item_id === id ? { ...item, quantity: Math.max(0, item.quantity + amount) } : item)
+                .filter(item => item.quantity > 0)
+        );
+    };
 
-  // --- Memoized UI Data ---
-  const categories = useMemo(() => ['All', ...new Set(menuItems.map(item => item.category || 'Uncategorized'))], [menuItems]);
-  
-  const filteredMenuItems = useMemo(() => {
-    return menuItems
-      .filter(item => selectedCategory === 'All' || item.category === selectedCategory)
-      .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [menuItems, selectedCategory, searchTerm]);
-  
-  const subtotal = useMemo(() => currentOrder.reduce((acc, item) => acc + item.price * item.quantity, 0), [currentOrder]);
-  const tax = useMemo(() => subtotal * 0.08, [subtotal]);
-  const total = useMemo(() => subtotal + tax, [subtotal, tax]);
+    const handleClearOrder = () => setCurrentOrder([]);
+
+    // --- CHANGE 2: `handleConfirmOrder` now saves the user ID directly ---
+    const handleConfirmOrder = async () => {
+        if (currentOrder.length === 0) {
+            setIsModalOpen(false);
+            return;
+        }
+        setStatus({ loading: true, error: null });
+
+        const orderData = {
+            items: currentOrder.map(i => ({
+                menu_item_id: i.menu_item_id,
+                quantity: i.quantity,
+                price: i.price,
+            })),
+            // Add any other fields you might need, like customer_name or table
+        };
+
+        if (isOnline) {
+            try {
+                await axios.post('/orders', orderData);
+                alert('Order placed successfully! You will now be logged out.');
+                logout();
+                navigate('/login');
+            } catch (error) {
+                const msg = error.response?.data?.error || 'Failed to place order.';
+                setStatus({ loading: false, error: msg });
+                setIsModalOpen(false);
+            }
+        } else { // OFFLINE
+            try {
+                // The most reliable way: save the user's ID with the order data.
+                await db.pendingOrders.add({
+                    createdAt: new Date(),
+                    data: {
+                        ...orderData,
+                        userId: user.id // <-- THIS IS THE CRITICAL FIX
+                    }
+                });
+                alert('You are offline. Order saved locally and will sync later. You will now be logged out.');
+                logout();
+                navigate('/login');
+            } catch (error) {
+                setStatus({ loading: false, error: 'Failed to save order locally.' });
+                setIsModalOpen(false);
+            }
+        }
+    };
+
+    const categories = useMemo(() => ['All', ...new Set(menuItems.map(item => item.category || 'Uncategorized'))], [menuItems]);
+    
+    const filteredMenuItems = useMemo(() =>
+        menuItems
+            .filter(item => selectedCategory === 'All' || item.category === selectedCategory)
+            .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase())),
+        [menuItems, selectedCategory, searchTerm]
+    );
+    
+    const subtotal = useMemo(() => currentOrder.reduce((acc, item) => acc + item.price * item.quantity, 0), [currentOrder]);
+    const tax = useMemo(() => subtotal * 0.08, [subtotal]);
+    const total = useMemo(() => subtotal + tax, [subtotal, tax]);
 
   return (
     <>

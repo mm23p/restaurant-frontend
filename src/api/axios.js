@@ -1,20 +1,15 @@
+// src/api/axios.js
 import axios from 'axios';
 
-// Get the backend API URL from the environment variable.
-// Note the required 'REACT_APP_' prefix for Create React App.
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-const instance = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+// This is the global instance that will have the interceptor.
+const axiosInstance = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
 });
 
-// This part adds the auth token to every request if it exists
-instance.interceptors.request.use(
+// The interceptor attaches the token of the currently logged-in user.
+axiosInstance.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token'); // Or wherever you store your token
+    const token = localStorage.getItem('token');
     if (token) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
@@ -25,4 +20,10 @@ instance.interceptors.request.use(
   }
 );
 
-export default instance;
+// --- NEW EXPORT ---
+// We also export the original, unmodified axios object.
+// We will use this to create a temporary, "clean" instance for syncing.
+export { axios as axiosBase };
+
+// The default export is still our global, header-injecting instance.
+export default axiosInstance;
