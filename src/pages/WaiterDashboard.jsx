@@ -57,7 +57,6 @@ const WaiterDashboard = () => {
         }
     }, [isOnline]);
 
-    // --- CHANGE 1: `syncPendingOrders` is now more robust ---
     const syncPendingOrders = useCallback(async () => {
         const pendingOrders = await db.pendingOrders.toArray();
         if (pendingOrders.length === 0) return;
@@ -116,8 +115,7 @@ const WaiterDashboard = () => {
 
     const handleClearOrder = () => setCurrentOrder([]);
 
-    // --- CHANGE 2: `handleConfirmOrder` now saves the user ID directly ---
-    const handleConfirmOrder = async () => {
+     const handleConfirmOrder = async () => {
         if (currentOrder.length === 0) {
             setIsModalOpen(false);
             return;
@@ -130,13 +128,12 @@ const WaiterDashboard = () => {
                 quantity: i.quantity,
                 price: i.price,
             })),
-            // Add any other fields you might need, like customer_name or table
         };
 
         if (isOnline) {
             try {
                 await axios.post('/orders', orderData);
-                alert('Order placed successfully! You will now be logged out.');
+                //alert('Order placed successfully! You will now be logged out.');
                 logout();
                 navigate('/login');
             } catch (error) {
@@ -146,19 +143,44 @@ const WaiterDashboard = () => {
             }
         } else { // OFFLINE
             try {
-                // The most reliable way: save the user's ID with the order data.
-                await db.pendingOrders.add({
-                    createdAt: new Date(),
-                    data: {
-                        ...orderData,
-                        userId: user.id // <-- THIS IS THE CRITICAL FIX
+                // Use a Dexie transaction to ensure data integrity.
+                // We will read/write to menuItems and write to pendingOrders.
+                await db.transaction('rw', db.menuItems, db.pendingOrders, async () => {
+                    // 1. Update quantities in the local menuItems table
+                    for (const item of currentOrder) {
+                        const menuItemToUpdate = await db.menuItems.get(item.menu_item_id);
+
+                        if (menuItemToUpdate && menuItemToUpdate.track_quantity) {
+                            const newQuantity = menuItemToUpdate.quantity - item.quantity;
+                            await db.menuItems.update(item.menu_item_id, { 
+                                quantity: newQuantity,
+                                // Also update availability if it runs out of stock
+                                is_available: newQuantity > 0 ? menuItemToUpdate.is_available : false
+                            });
+                        }
                     }
+
+                    // 2. Save the pending order
+                    await db.pendingOrders.add({
+                        createdAt: new Date(),
+                        data: {
+                            ...orderData,
+                            userId: user.id // We keep this from our previous fix
+                        }
+                    });
                 });
+
+                // 3. After the transaction is successful, update the UI state and log out
                 alert('You are offline. Order saved locally and will sync later. You will now be logged out.');
+                // Manually refresh the menu items from the updated local DB to reflect changes
+                const localItems = await db.menuItems.toArray();
+                setMenuItems(localItems);
                 logout();
                 navigate('/login');
+
             } catch (error) {
-                setStatus({ loading: false, error: 'Failed to save order locally.' });
+                console.error("Offline order transaction failed:", error);
+                setStatus({ loading: false, error: 'Failed to save order locally. Inventory might be out of sync.' });
                 setIsModalOpen(false);
             }
         }
