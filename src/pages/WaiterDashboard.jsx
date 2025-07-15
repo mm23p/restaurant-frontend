@@ -26,7 +26,7 @@ const useOnlineStatus = () => {
 };
 const WaiterDashboard = () => {
     const navigate = useNavigate();
-    const { user, logout } = useAuth(); // We only need the user object, not the token for offline saving
+    const { user, logout } = useAuth(); 
     const isOnline = useOnlineStatus();
 
     const [menuItems, setMenuItems] = useState([]);
@@ -115,7 +115,7 @@ const WaiterDashboard = () => {
 
     const handleClearOrder = () => setCurrentOrder([]);
 
-     const handleConfirmOrder = async () => {
+      const handleConfirmOrder = async () => {
         if (currentOrder.length === 0) {
             setIsModalOpen(false);
             return;
@@ -133,7 +133,7 @@ const WaiterDashboard = () => {
         if (isOnline) {
             try {
                 await axios.post('/orders', orderData);
-                //alert('Order placed successfully! You will now be logged out.');
+                alert('Order placed successfully! You will now be logged out.');
                 logout();
                 navigate('/login');
             } catch (error) {
@@ -143,10 +143,10 @@ const WaiterDashboard = () => {
             }
         } else { // OFFLINE
             try {
-                // Use a Dexie transaction to ensure data integrity.
-                // We will read/write to menuItems and write to pendingOrders.
+                // Use a Dexie transaction for atomicity. This ensures that we either
+                // update the local inventory AND save the order, or do neither.
                 await db.transaction('rw', db.menuItems, db.pendingOrders, async () => {
-                    // 1. Update quantities in the local menuItems table
+                    // 1. Update quantities for tracked items in the local menuItems table
                     for (const item of currentOrder) {
                         const menuItemToUpdate = await db.menuItems.get(item.menu_item_id);
 
@@ -160,17 +160,17 @@ const WaiterDashboard = () => {
                         }
                     }
 
-                    // 2. Save the pending order
+                    // 2. Save the pending order with the correct waiter's user ID
                     await db.pendingOrders.add({
                         createdAt: new Date(),
                         data: {
                             ...orderData,
-                            userId: user.id // We keep this from our previous fix
+                            userId: user.id // This is the fix for the user attribution issue
                         }
                     });
                 });
 
-                // 3. After the transaction is successful, update the UI state and log out
+                // 3. After the transaction is successful, update UI and log out
                 alert('You are offline. Order saved locally and will sync later. You will now be logged out.');
                 // Manually refresh the menu items from the updated local DB to reflect changes
                 const localItems = await db.menuItems.toArray();
@@ -186,15 +186,15 @@ const WaiterDashboard = () => {
         }
     };
 
+    // --- Memoized UI Data ---
     const categories = useMemo(() => ['All', ...new Set(menuItems.map(item => item.category || 'Uncategorized'))], [menuItems]);
-    
-    const filteredMenuItems = useMemo(() =>
-        menuItems
+  
+    const filteredMenuItems = useMemo(() => {
+        return menuItems
             .filter(item => selectedCategory === 'All' || item.category === selectedCategory)
-            .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase())),
-        [menuItems, selectedCategory, searchTerm]
-    );
-    
+            .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [menuItems, selectedCategory, searchTerm]);
+  
     const subtotal = useMemo(() => currentOrder.reduce((acc, item) => acc + item.price * item.quantity, 0), [currentOrder]);
     const tax = useMemo(() => subtotal * 0.08, [subtotal]);
     const total = useMemo(() => subtotal + tax, [subtotal, tax]);
