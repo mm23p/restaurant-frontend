@@ -246,7 +246,7 @@ const WaiterDashboard = () => {
                             <div className="flex justify-between font-bold text-lg text-gray-900"><span>Total:</span><span>{total.toFixed(2)}</span></div>
                         </div>
                         <button onClick={() => setIsModalOpen(true)} disabled={status.loading || currentOrder.length === 0} className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-300 transition font-semibold">
-                            Place Order
+                             Order
                         </button>
                         <button onClick={handleClearOrder} className="w-full bg-red-100 text-red-700 py-2 rounded-lg hover:bg-red-200 flex items-center justify-center gap-2">
                             <FaTrash size={12} /> Clear Order
