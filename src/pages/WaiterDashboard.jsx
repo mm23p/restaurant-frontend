@@ -249,7 +249,7 @@ const WaiterDashboard = () => {
                              Order
                         </button>
                         <button onClick={handleClearOrder} className="w-full bg-red-100 text-red-700 py-2 rounded-lg hover:bg-red-200 flex items-center justify-center gap-2">
-                            <FaTrash size={12} /> Clear Order
+                            <FaTrash size={12} /> Clear 
                         </button>
                         {status.error && <p className="text-red-500 text-center text-sm pt-2">{status.error}</p>}
                     </div>
