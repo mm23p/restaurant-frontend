@@ -1,32 +1,31 @@
-// src/pages/WaiterDashboard.jsx
-
-import React, { useState, useEffect, useMemo,  useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppLayout from '../components/AppLayout';
-import { FaUtensils, FaTrash, FaPlus, FaMinus , FaWifi, FaCloudUploadAlt} from 'react-icons/fa';
+import { FaUtensils, FaTrash, FaPlus, FaMinus, FaWifi, FaCloudUploadAlt } from 'react-icons/fa';
 import axios from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import ConfirmationModal from '../components/ConfirmationModal'; // Import the new modal
+import ConfirmationModal from '../components/ConfirmationModal';
 import { db } from '../db';
 import AppSidebar from '../components/AppSidebar';
 
 const useOnlineStatus = () => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-  return isOnline;
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+    return isOnline;
 };
+
 const WaiterDashboard = () => {
     const navigate = useNavigate();
-    const { user, logout } = useAuth(); 
+    const { user, logout } = useAuth();
     const isOnline = useOnlineStatus();
 
     const [menuItems, setMenuItems] = useState([]);
@@ -66,17 +65,12 @@ const WaiterDashboard = () => {
 
         for (const order of pendingOrders) {
             try {
-                // The backend will get the user from `order.data.userId`.
-                // The current user's token is used just to authorize the API call.
                 const response = await axios.post('/orders', {
                     ...order.data,
-                    offlineId: order.id // Pass the Dexie ID for confirmation
+                    offlineId: order.id
                 });
-
                 if (response.status === 201) {
-                    // On success, delete the order from the local DB
                     await db.pendingOrders.delete(order.id);
-                    console.log(`Successfully synced offline order #${order.id}`);
                     successCount++;
                 }
             } catch (error) {
@@ -112,10 +106,10 @@ const WaiterDashboard = () => {
                 .filter(item => item.quantity > 0)
         );
     };
-
+    
     const handleClearOrder = () => setCurrentOrder([]);
 
-      const handleConfirmOrder = async () => {
+    const handleConfirmOrder = async () => {
         if (currentOrder.length === 0) {
             setIsModalOpen(false);
             return;
@@ -143,58 +137,34 @@ const WaiterDashboard = () => {
             }
         } else { // OFFLINE
             try {
-               
-                await db.transaction('rw', db.menuItems, db.pendingOrders, async () => {
-                    for (const item of currentOrder) {
-                        const menuItemToUpdate = await db.menuItems.get(item.menu_item_id);
-
-                        if (menuItemToUpdate && menuItemToUpdate.track_quantity) {
-                            const newQuantity = menuItemToUpdate.quantity - item.quantity;
-                            await db.menuItems.update(item.menu_item_id, { 
-                                quantity: newQuantity,
-                                // Also update availability if it runs out of stock
-                                is_available: newQuantity > 0 ? menuItemToUpdate.is_available : false
-                            });
-                        }
+                await db.pendingOrders.add({
+                    createdAt: new Date(),
+                    data: {
+                        ...orderData,
+                        userId: user.id // The user ID is now saved inside the 'data' object
                     }
-
-                    // 2. Save the pending order with the correct waiter's user ID
-                    await db.pendingOrders.add({
-                        createdAt: new Date(),
-                        data: {
-                            ...orderData,
-                            userId: user.id // This is the fix for the user attribution issue
-                        }
-                    });
                 });
-
                 alert('You are offline. Order saved locally and will sync later. You will now be logged out.');
-                const localItems = await db.menuItems.toArray();
-                setMenuItems(localItems);
                 logout();
                 navigate('/login');
-
             } catch (error) {
-                console.error("Offline order transaction failed:", error);
-                setStatus({ loading: false, error: 'Failed to save order locally. Inventory might be out of sync.' });
+                setStatus({ loading: false, error: 'Failed to save order locally.' });
                 setIsModalOpen(false);
             }
         }
     };
 
-    // --- Memoized UI Data ---
     const categories = useMemo(() => ['All', ...new Set(menuItems.map(item => item.category || 'Uncategorized'))], [menuItems]);
-  
+    
     const filteredMenuItems = useMemo(() => {
         return menuItems
             .filter(item => selectedCategory === 'All' || item.category === selectedCategory)
             .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
     }, [menuItems, selectedCategory, searchTerm]);
-  
+    
     const subtotal = useMemo(() => currentOrder.reduce((acc, item) => acc + item.price * item.quantity, 0), [currentOrder]);
     const tax = useMemo(() => subtotal * 0.08, [subtotal]);
     const total = useMemo(() => subtotal + tax, [subtotal, tax]);
-
   return (
     <>
       <AppLayout sidebar={<AppSidebar />}>
