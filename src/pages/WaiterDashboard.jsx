@@ -143,10 +143,8 @@ const WaiterDashboard = () => {
             }
         } else { // OFFLINE
             try {
-                // Use a Dexie transaction for atomicity. This ensures that we either
-                // update the local inventory AND save the order, or do neither.
+               
                 await db.transaction('rw', db.menuItems, db.pendingOrders, async () => {
-                    // 1. Update quantities for tracked items in the local menuItems table
                     for (const item of currentOrder) {
                         const menuItemToUpdate = await db.menuItems.get(item.menu_item_id);
 
@@ -170,9 +168,7 @@ const WaiterDashboard = () => {
                     });
                 });
 
-                // 3. After the transaction is successful, update UI and log out
                 alert('You are offline. Order saved locally and will sync later. You will now be logged out.');
-                // Manually refresh the menu items from the updated local DB to reflect changes
                 const localItems = await db.menuItems.toArray();
                 setMenuItems(localItems);
                 logout();
