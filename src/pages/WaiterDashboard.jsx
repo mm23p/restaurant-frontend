@@ -170,7 +170,7 @@ const WaiterDashboard = () => {
       <AppLayout sidebar={<AppSidebar />}>
         <div className="flex flex-col h-full">
             <div className="p-2 bg-gray-800 text-white text-center text-sm flex items-center justify-center gap-4 shrink-0">
-                {isOnline ? ( <span className="flex items-center gap-2 text-green-400"><FaWifi /> Online</span> ) : ( <span className="flex items-center gap-2 text-yellow-400"><FaWifi /> OFFLINE MODE</span> )}
+                {isOnline ? ( <span className="flex items-center gap-2 text-green-400"><FaWifi /> Onnline</span> ) : ( <span className="flex items-center gap-2 text-yellow-400"><FaWifi /> OFFLINE MODE</span> )}
                 {syncing && <span className="flex items-center gap-2 text-blue-400"><FaCloudUploadAlt className="animate-pulse"/> Syncing...</span>}
             </div>
 
@@ -246,10 +246,10 @@ const WaiterDashboard = () => {
                             <div className="flex justify-between font-bold text-lg text-gray-900"><span>Total:</span><span>{total.toFixed(2)}</span></div>
                         </div>
                         <button onClick={() => setIsModalOpen(true)} disabled={status.loading || currentOrder.length === 0} className="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-300 transition font-semibold">
-                             Order
+                            Place Order
                         </button>
                         <button onClick={handleClearOrder} className="w-full bg-red-100 text-red-700 py-2 rounded-lg hover:bg-red-200 flex items-center justify-center gap-2">
-                            <FaTrash size={12} /> Clear 
+                            <FaTrash size={12} /> Clear Order
                         </button>
                         {status.error && <p className="text-red-500 text-center text-sm pt-2">{status.error}</p>}
                     </div>
